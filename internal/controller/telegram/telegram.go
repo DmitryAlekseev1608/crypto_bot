@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -76,7 +77,7 @@ func (t TelegramController) Run(ctx context.Context) {
 					}
 				}()
 				t.sendMessage("Сессия начата. Отправьте 's' для отмены.", update, keyboard)
-			
+
 			case update.Message.Text == "s":
 				if cancel, exists := activeSessions[update.Message.Chat.ID]; exists {
 					cancel()
@@ -85,7 +86,7 @@ func (t TelegramController) Run(ctx context.Context) {
 				} else {
 					t.sendMessage("Нет активной сессии.", update, keyboard)
 				}
-			
+
 			default:
 				t.sendMessage("Такого действия ботом не предусмотрено или что-то было введено не верно", update, keyboard)
 			}
@@ -94,7 +95,7 @@ func (t TelegramController) Run(ctx context.Context) {
 			callbackQuery := update.CallbackQuery
 			t.log.Info("Received callback query", t.log.StringC("CallbackQuery", callbackQuery.Data),
 				t.log.Int64C("ChatID", callbackQuery.Message.Chat.ID))
-			t.handleRequest(ctx, callbackQuery.Message)
+			t.botUseCase.GetTransactions(ctx, callbackQuery.Data)
 		}
 	}
 }
@@ -116,52 +117,59 @@ func (t TelegramController) sendMessage(text string, update tgbotapi.Update, key
 }
 
 func (t TelegramController) handleRequest(ctx context.Context, update *tgbotapi.Message) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			inputFromClient := transformTextInSlice(update.Text)
-			usdt := float32(inputFromClient[0])
-			spread := float32(inputFromClient[1])
-			request := request.RequestParameters{
-				URL:   "http://localhost:8080/spot",
-				Query: map[string]interface{}{"usdt": usdt, "spread": spread},
-			}
-			request.Request()
-			response := unmarshalDataFromService(request.BodyResponse)
-			if len(response) != 0 {
-				buttons := []tgbotapi.InlineKeyboardButton{}
-				for _, row := range response {
-					textOnButton := fmt.Sprintf("%v: %.2f (%.2f%%) 🟢", row.Symbol, row.AmountCoin, row.Spread)
-					keyMsg := strconv.FormatInt(update.Chat.ID, 10) + "/" + row.MarketFrom + "/" + row.MarketTo + "/" + row.Symbol
-					clientInfoVal := redis.ClientInfoVal{}
-					clientInfoVal.Symbol = row.Symbol
-					clientInfoVal.MarketFrom = row.MarketFrom
-					clientInfoVal.WithDrawFee = row.WithDrawFee
-					clientInfoVal.WithdrawMax = row.WithdrawMax
-					clientInfoVal.Chain = row.Chain
-					clientInfoVal.AmountCoin = row.AmountCoin
-					clientInfoVal.AmountAskOrder = row.AmountAskOrder
-					clientInfoVal.AskCost = row.AskCost
-					clientInfoVal.AskOrder = transformInFormForREST(row.AskOrder)
-					clientInfoVal.MarketTo = row.MarketTo
-					clientInfoVal.AmountBidOrder = row.AmountBidOrder
-					clientInfoVal.BidCost = row.BidCost
-					clientInfoVal.BidOrder = transformInFormForREST(row.BidOrder)
-					clientInfoVal.Spread = row.Spread
-					var textUnderButton = make(redis.ClientInfo)
-					textUnderButton[keyMsg] = clientInfoVal
-					button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
-					buttons = append(buttons, button)
-					textUnderButton.Insert()
-				}
-				inlineKeyboard := createInlineKeyboard(buttons)
-				msg := tgbotapi.NewMessage(update.Chat.ID, "Выберите подходящую Вам сделку:")
-				msg.ReplyMarkup = inlineKeyboard
-				bot.Send(msg)
-				time.Sleep(10 * time.Second)
-			}
-		}
+	inputFromClient := transformTextInSlice(update.Text)
+	usdt := float32(inputFromClient[0])
+	spread := float32(inputFromClient[1])
+	request := request.RequestParameters{
+		URL:   "http://localhost:8080/spot",
+		Query: map[string]interface{}{"usdt": usdt, "spread": spread},
 	}
+	request.Request()
+	response := unmarshalDataFromService(request.BodyResponse)
+	if len(response) != 0 {
+		buttons := []tgbotapi.InlineKeyboardButton{}
+		for _, row := range response {
+			textOnButton := fmt.Sprintf("%v: %.2f (%.2f%%) 🟢", row.Symbol, row.AmountCoin, row.Spread)
+			keyMsg := strconv.FormatInt(update.Chat.ID, 10) + "/" + row.MarketFrom + "/" + row.MarketTo + "/" + row.Symbol
+			clientInfoVal := redis.ClientInfoVal{}
+			clientInfoVal.Symbol = row.Symbol
+			clientInfoVal.MarketFrom = row.MarketFrom
+			clientInfoVal.WithDrawFee = row.WithDrawFee
+			clientInfoVal.WithdrawMax = row.WithdrawMax
+			clientInfoVal.Chain = row.Chain
+			clientInfoVal.AmountCoin = row.AmountCoin
+			clientInfoVal.AmountAskOrder = row.AmountAskOrder
+			clientInfoVal.AskCost = row.AskCost
+			clientInfoVal.AskOrder = transformInFormForREST(row.AskOrder)
+			clientInfoVal.MarketTo = row.MarketTo
+			clientInfoVal.AmountBidOrder = row.AmountBidOrder
+			clientInfoVal.BidCost = row.BidCost
+			clientInfoVal.BidOrder = transformInFormForREST(row.BidOrder)
+			clientInfoVal.Spread = row.Spread
+			var textUnderButton = make(redis.ClientInfo)
+			textUnderButton[keyMsg] = clientInfoVal
+			button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
+			buttons = append(buttons, button)
+			textUnderButton.Insert()
+		}
+		inlineKeyboard := createInlineKeyboard(buttons)
+		msg := tgbotapi.NewMessage(update.Chat.ID, "Выберите подходящую Вам сделку:")
+		msg.ReplyMarkup = inlineKeyboard
+		bot.Send(msg)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func transformTextInSlice(input string) (numbers []float32) {
+	parts := strings.Split(input, " ")
+	numbers = []float32{}
+	for _, part := range parts {
+		num, err := strconv.ParseFloat(part, 32)
+		if err != nil {
+			logger.Warnf("Error when transforming '%s': %v", part, err)
+			continue
+		}
+		numbers = append(numbers, float32(num))
+	}
+	return
 }

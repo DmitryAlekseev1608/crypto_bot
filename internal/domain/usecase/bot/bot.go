@@ -77,3 +77,54 @@ func (b BotUseCase) HandleMessage(text string) string {
 func (b BotUseCase) getWarn() string {
 
 }
+
+func (t TelegramController) handleRequest(ctx context.Context, update *tgbotapi.Message) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			inputFromClient := transformTextInSlice(update.Text)
+			usdt := float32(inputFromClient[0])
+			spread := float32(inputFromClient[1])
+			request := request.RequestParameters{
+				URL:   "http://localhost:8080/spot",
+				Query: map[string]interface{}{"usdt": usdt, "spread": spread},
+			}
+			request.Request()
+			response := unmarshalDataFromService(request.BodyResponse)
+			if len(response) != 0 {
+				buttons := []tgbotapi.InlineKeyboardButton{}
+				for _, row := range response {
+					textOnButton := fmt.Sprintf("%v: %.2f (%.2f%%) 🟢", row.Symbol, row.AmountCoin, row.Spread)
+					keyMsg := strconv.FormatInt(update.Chat.ID, 10) + "/" + row.MarketFrom + "/" + row.MarketTo + "/" + row.Symbol
+					clientInfoVal := redis.ClientInfoVal{}
+					clientInfoVal.Symbol = row.Symbol
+					clientInfoVal.MarketFrom = row.MarketFrom
+					clientInfoVal.WithDrawFee = row.WithDrawFee
+					clientInfoVal.WithdrawMax = row.WithdrawMax
+					clientInfoVal.Chain = row.Chain
+					clientInfoVal.AmountCoin = row.AmountCoin
+					clientInfoVal.AmountAskOrder = row.AmountAskOrder
+					clientInfoVal.AskCost = row.AskCost
+					clientInfoVal.AskOrder = transformInFormForREST(row.AskOrder)
+					clientInfoVal.MarketTo = row.MarketTo
+					clientInfoVal.AmountBidOrder = row.AmountBidOrder
+					clientInfoVal.BidCost = row.BidCost
+					clientInfoVal.BidOrder = transformInFormForREST(row.BidOrder)
+					clientInfoVal.Spread = row.Spread
+					var textUnderButton = make(redis.ClientInfo)
+					textUnderButton[keyMsg] = clientInfoVal
+					button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
+					buttons = append(buttons, button)
+					textUnderButton.Insert()
+				}
+				inlineKeyboard := createInlineKeyboard(buttons)
+				msg := tgbotapi.NewMessage(update.Chat.ID, "Выберите подходящую Вам сделку:")
+				msg.ReplyMarkup = inlineKeyboard
+				bot.Send(msg)
+				time.Sleep(10 * time.Second)
+			}
+		}
+	}
+}

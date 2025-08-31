@@ -1,6 +1,9 @@
 package usecase
 
-import "crypto_pro/internal/domain/usecase/spot"
+import (
+	"context"
+	"crypto_pro/internal/domain/usecase/spot"
+)
 
 type ChainUseCase interface {
 	Run()
@@ -19,5 +22,5 @@ type SpotUseCase interface {
 }
 
 type BotUseCase interface {
-	GetInstruction() string
+	GetTransactions(ctx context.Context, data string)
 }
