@@ -9,18 +9,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type TelegramController struct {
-	log        logger.Logger
-	bot        *tgbotapi.BotAPI
-	botUseCase usecase.BotUseCase
+	log         logger.Logger
+	bot         *tgbotapi.BotAPI
+	taskUseCase usecase.TaskUseCase
+	infoUseCase usecase.InfoUseCase
 }
 
-func New(log logger.Logger) TelegramController {
+func New(log logger.Logger, taskUseCase usecase.TaskUseCase, infoUseCase usecase.InfoUseCase) TelegramController {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_APITOKEN"))
 	if err != nil {
 		panic(err)
@@ -30,24 +30,22 @@ func New(log logger.Logger) TelegramController {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	return TelegramController{log: log, bot: bot}
+	return TelegramController{log: log, bot: bot, taskUseCase: taskUseCase, infoUseCase: infoUseCase}
 }
 
 func (t TelegramController) Run(ctx context.Context) {
 	var activeSessions = make(map[int64]context.CancelFunc)
-
 	updates := t.bot.GetUpdatesChan(tgbotapi.NewUpdate(0))
-
 	keyboard := tgbotapi.NewReplyKeyboard(
 		tgbotapi.NewKeyboardButtonRow(
 			tgbotapi.NewKeyboardButton("Инструкция"),
 		),
 	)
-
 	re := regexp.MustCompile(`^\d+\s\d+(\.\d+)?$`)
-
 	semathore := make(chan struct{}, 30)
 	defer close(semathore)
+	t.taskUseCase.TrancateRawTransactions()
+	t.taskUseCase.TrancateDwhTransactions()
 
 	for update := range updates {
 		if update.Message != nil {
@@ -72,7 +70,7 @@ func (t TelegramController) Run(ctx context.Context) {
 						case <-ctx.Done():
 							return
 						default:
-							t.handleRequest(ctx, update.Message)
+							t.handleRequest(update.Message)
 						}
 					}
 				}()
@@ -82,6 +80,7 @@ func (t TelegramController) Run(ctx context.Context) {
 				if cancel, exists := activeSessions[update.Message.Chat.ID]; exists {
 					cancel()
 					delete(activeSessions, update.Message.Chat.ID)
+					t.taskUseCase.DeleteSession(update.Message.Chat.ID)
 					t.sendMessage("Сессия отменена.", update, keyboard)
 				} else {
 					t.sendMessage("Нет активной сессии.", update, keyboard)
@@ -92,10 +91,7 @@ func (t TelegramController) Run(ctx context.Context) {
 			}
 
 		} else if update.CallbackQuery != nil {
-			callbackQuery := update.CallbackQuery
-			t.log.Info("Received callback query", t.log.StringC("CallbackQuery", callbackQuery.Data),
-				t.log.Int64C("ChatID", callbackQuery.Message.Chat.ID))
-			t.botUseCase.GetTransactions(ctx, callbackQuery.Data)
+			t.sendInfo(update.CallbackQuery)
 		}
 	}
 }
@@ -110,66 +106,77 @@ func (t TelegramController) getInstruction() string {
 `
 }
 
-func (t TelegramController) sendMessage(text string, update tgbotapi.Update, keyboard tgbotapi.ReplyKeyboardMarkup) {
+func (t TelegramController) sendMessage(text string, update tgbotapi.Update,
+	keyboard tgbotapi.ReplyKeyboardMarkup) {
+
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, text)
 	msg.ReplyMarkup = keyboard
 	t.bot.Send(msg)
 }
 
-func (t TelegramController) handleRequest(ctx context.Context, update *tgbotapi.Message) {
-	inputFromClient := transformTextInSlice(update.Text)
-	usdt := float32(inputFromClient[0])
-	spread := float32(inputFromClient[1])
-	request := request.RequestParameters{
-		URL:   "http://localhost:8080/spot",
-		Query: map[string]interface{}{"usdt": usdt, "spread": spread},
+func (t TelegramController) handleRequest(update *tgbotapi.Message) {
+	transactions := t.taskUseCase.HandleRequest(update.Text)
+	buttons := []tgbotapi.InlineKeyboardButton{}
+
+	for _, transaction := range transactions {
+		textOnButton := fmt.Sprintf("%v: %.2f (%.2f%%) 🟢", transaction.Symbol,
+			transaction.AmountCoin, transaction.Spread)
+		keyMsg := strconv.FormatInt(update.Chat.ID, 10) + "/" + transaction.MarketFrom + "/" +
+			transaction.MarketTo + "/" + transaction.Symbol
+		button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
+		buttons = append(buttons, button)
 	}
-	request.Request()
-	response := unmarshalDataFromService(request.BodyResponse)
-	if len(response) != 0 {
-		buttons := []tgbotapi.InlineKeyboardButton{}
-		for _, row := range response {
-			textOnButton := fmt.Sprintf("%v: %.2f (%.2f%%) 🟢", row.Symbol, row.AmountCoin, row.Spread)
-			keyMsg := strconv.FormatInt(update.Chat.ID, 10) + "/" + row.MarketFrom + "/" + row.MarketTo + "/" + row.Symbol
-			clientInfoVal := redis.ClientInfoVal{}
-			clientInfoVal.Symbol = row.Symbol
-			clientInfoVal.MarketFrom = row.MarketFrom
-			clientInfoVal.WithDrawFee = row.WithDrawFee
-			clientInfoVal.WithdrawMax = row.WithdrawMax
-			clientInfoVal.Chain = row.Chain
-			clientInfoVal.AmountCoin = row.AmountCoin
-			clientInfoVal.AmountAskOrder = row.AmountAskOrder
-			clientInfoVal.AskCost = row.AskCost
-			clientInfoVal.AskOrder = transformInFormForREST(row.AskOrder)
-			clientInfoVal.MarketTo = row.MarketTo
-			clientInfoVal.AmountBidOrder = row.AmountBidOrder
-			clientInfoVal.BidCost = row.BidCost
-			clientInfoVal.BidOrder = transformInFormForREST(row.BidOrder)
-			clientInfoVal.Spread = row.Spread
-			var textUnderButton = make(redis.ClientInfo)
-			textUnderButton[keyMsg] = clientInfoVal
-			button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
-			buttons = append(buttons, button)
-			textUnderButton.Insert()
-		}
-		inlineKeyboard := createInlineKeyboard(buttons)
-		msg := tgbotapi.NewMessage(update.Chat.ID, "Выберите подходящую Вам сделку:")
-		msg.ReplyMarkup = inlineKeyboard
-		bot.Send(msg)
-		time.Sleep(10 * time.Second)
-	}
+	inlineKeyboard := t.createInlineKeyboard(buttons)
+	msg := tgbotapi.NewMessage(update.Chat.ID, "Выберите подходящую Вам сделку:")
+	msg.ReplyMarkup = inlineKeyboard
+	t.bot.Send(msg)
 }
 
-func transformTextInSlice(input string) (numbers []float32) {
-	parts := strings.Split(input, " ")
-	numbers = []float32{}
-	for _, part := range parts {
-		num, err := strconv.ParseFloat(part, 32)
-		if err != nil {
-			logger.Warnf("Error when transforming '%s': %v", part, err)
-			continue
-		}
-		numbers = append(numbers, float32(num))
+func (t TelegramController) createInlineKeyboard(buttons []tgbotapi.InlineKeyboardButton
+	) tgbotapi.InlineKeyboardMarkup {
+
+	var rows [][]tgbotapi.InlineKeyboardButton
+	var row []tgbotapi.InlineKeyboardButton
+	for _, button := range buttons {
+		row = append(row, button)
+		rows = append(rows, row)
+		row = nil
 	}
-	return
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func (t TelegramController) sendInfo(update *tgbotapi.CallbackQuery) {
+	callbackQuery := update.CallbackQuery
+	logger.Infof("User pressed: %v", callbackQuery.Data)
+	
+
+
+
+
+
+	dataFromRedis := t.redis.GetOrder(1, callbackQuery.Data)
+	var dataForClient redis.ClientInfoVal
+	err := json.Unmarshal([]byte(dataFromRedis), &dataForClient)
+	if err != nil {
+		logger.Warnf("Error for unmarshal JSON: %v", err)
+	}
+	if dataForClient.WithDrawFee != 0 {
+		textWithDeal := fmt.Sprintf("%v \n", dataForClient.Symbol)
+		textWithDeal += fmt.Sprintf("📕|%v| \n", dataForClient.MarketFrom)
+		textWithDeal += fmt.Sprintf("Комиссия: %v %v \n", dataForClient.WithDrawFee, dataForClient.Symbol)
+		textWithDeal += fmt.Sprintf("Объем допустимый: %v %v \n", dataForClient.WithdrawMax, dataForClient.Symbol)
+		textWithDeal += fmt.Sprintf("Сеть: %v \n", dataForClient.Chain)
+		textWithDeal += fmt.Sprintf("Объем: %.4f %v \n", dataForClient.AmountCoin, dataForClient.Symbol)
+		textWithDeal += fmt.Sprintf("Кол-во ордеров: %v \n", dataForClient.AmountAskOrder)
+		textWithDeal += fmt.Sprintf("Стоимость: %.2f USDT \n", dataForClient.AskCost)
+		textWithDeal += fmt.Sprintf("Ордера (Цена/Кол-во): %v \n", dataForClient.AskOrder)
+		textWithDeal += fmt.Sprintf("📗|%v| \n", dataForClient.MarketTo)
+		textWithDeal += fmt.Sprintf("Кол-во ордеров: %v \n", dataForClient.AmountBidOrder)
+		textWithDeal += fmt.Sprintf("Стоимость: %.2f USDT \n", dataForClient.BidCost)
+		textWithDeal += fmt.Sprintf("Ордера (Цена/Кол-во): %v \n", dataForClient.BidOrder)
+		textWithDeal += "--- \n"
+		textWithDeal += fmt.Sprintf("💰 Спред: %.2f %%", dataForClient.Spread)
+		msg := tgbotapi.NewMessage(callbackQuery.Message.Chat.ID, textWithDeal)
+		t.bot.Send(msg)
+}
 }

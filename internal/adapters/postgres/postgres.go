@@ -3,10 +3,8 @@ package postgres
 import (
 	"context"
 	"crypto_pro/internal/adapters"
-	"crypto_pro/internal/configs"
 	"crypto_pro/internal/domain/entity"
 	"crypto_pro/pkg/logger"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -99,29 +97,7 @@ func (d *PostresRepository) Close() {
 	client.Close()
 }
 
-func (d *PostresRepository) TrancateRowChains() error {
-	tx := d.client.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback()
-
-	trancateQuery := `
-		TRUNCATE TABLE raw_chains
-	`
-
-	if err := tx.Exec(trancateQuery).Error; err != nil {
-		return err
-	}
-
-	return tx.Commit().Error
-}
-
-func (d *PostresRepository) InsertRowChains(chains []entity.Chain) error {
-	if len(chains) == 0 {
-		return nil
-	}
-
+func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transaction) error {
 	tx := d.client.Begin()
 	if tx.Error != nil {
 		return tx.Error
@@ -131,47 +107,35 @@ func (d *PostresRepository) InsertRowChains(chains []entity.Chain) error {
 	var values []string
 	var insertArgs []interface{}
 
-	for i, chain := range chains {
-		values = append(values, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d)",
-			i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6))
-		insertArgs = append(insertArgs, chain.Market, chain.Symbol, chain.Chain,
-			chain.WithdrawMin, chain.WithdrawMax, chain.WithdrawFee)
+	for i, transaction := range transactions {
+		values = append(values, fmt.Sprintf(`($%d, $%s, $%s, $%s, $%s, $%f, $%f, $%f, $%f, $%f,
+			$%f, $%f, $%f, $%f, $%f, $%f, $%f, $%f, $%v)`,
+			i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6, i*6+7, i*6+8, i*6+9, i*6+10, i*6+11, i*6+12,
+			i*6+13, i*6+14, i*6+15, i*6+16))
+		insertArgs = append(insertArgs, transaction.ID, transaction.Symbol, transaction.Chain,
+			transaction.MarketFrom, transaction.MarketTo, transaction.Spread,
+			transaction.WithDrawFee, transaction.WithdrawMax, transaction.AmountCoin,
+			transaction.AmountAskOrder, transaction.AskCost, transaction.AskOrder,
+			transaction.AmountBidOrder, transaction.BidCost, transaction.BidOrder,
+			time.Now())
 	}
 
 	insertQuery := fmt.Sprintf(`
-        INSERT INTO raw_chains (exchange, symbol, chain, withdraw_min, withdraw_max, withdraw_fee)
-        VALUES %s
-    `, strings.Join(values, ","))
+		INSERT INTO dwh_transactions (id, symbol, chain, market_from, market_to, spread, 
+			with_draw_fee, withdraw_max, amount_coin, amount_ask_order, ask_cost, ask_order,
+			amount_bid_order, bid_cost, bid_order, updated_at)
+		VALUES %s
+	`, strings.Join(values, ","))
 
-	if err := tx.Exec(insertQuery, insertArgs...).Error; err != nil {
+	if err := tx.Exec(insertQuery).Error; err != nil {
 		return err
-	}
-
-	return tx.Commit().Error
-}
-
-func (d *PostresRepository) UpsertDWHChains() error {
-	tx := d.client.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback()
-
-	var count int64
-	if err := tx.Raw("SELECT COUNT(*) FROM raw_chains").Scan(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		return tx.Commit().Error
 	}
 
 	deleteQuery := `
-		DELETE FROM dwh_chains
-		WHERE (symbol, chain) NOT IN (
-			SELECT symbol, chain
-			FROM raw_chains
-			GROUP BY symbol, chain
-			HAVING COUNT(*) >= 2
+		DELETE FROM dwh_transactions
+		WHERE (id, symbol, chain, market_from, market_to) NOT IN (
+			SELECT id, symbol, chain, market_from, market_to
+			FROM raw_transactions
 		)
 	`
 
@@ -179,27 +143,42 @@ func (d *PostresRepository) UpsertDWHChains() error {
 		return err
 	}
 
-	insertQuery := `
-		INSERT INTO dwh_chains (exchange, symbol, chain, withdraw_min, withdraw_max, withdraw_fee)
+	insertQuery = `
+		INSERT INTO dwh_transactions (id, symbol, chain, market_from, market_to, spread, 
+			with_draw_fee, withdraw_max, amount_coin, amount_ask_order, ask_cost, ask_order,
+			amount_bid_order, bid_cost, bid_order, updated_at)
 		SELECT
-			r.exchange,
+			r.id,
 			r.symbol,
 			r.chain,
-			r.withdraw_min,
+			r.market_from,
+			r.market_to,
+			r.spread,
+			r.with_draw_fee,
+			r.withdraw_max,
+			r.amount_coin,
+			r.amount_ask_order,
+			r.ask_cost,
+			r.ask_order,
+			r.amount_bid_order,
+			r.bid_cost,
+			r.bid_order,
+			r.updated_at
 			r.withdraw_max,
 			r.withdraw_fee
-		FROM raw_chains r
-		WHERE (r.symbol, r.chain) IN (
-			SELECT symbol, chain
-			FROM raw_chains
-			GROUP BY symbol, chain
-			HAVING COUNT(*) >= 2
-		)
-		ON CONFLICT (exchange, symbol, chain) DO UPDATE
+		FROM raw_transactions r
+		ON CONFLICT (id, symbol, chain, market_from, market_to) DO UPDATE
 		SET
-			withdraw_min = EXCLUDED.withdraw_min,
+			spread = EXCLUDED.spread,
+			with_draw_fee = EXCLUDED.with_draw_fee,
 			withdraw_max = EXCLUDED.withdraw_max,
-			withdraw_fee = EXCLUDED.withdraw_fee,
+			amount_coin = EXCLUDED.amount_coin,
+			amount_ask_order = EXCLUDED.amount_ask_order,
+			ask_cost = EXCLUDED.ask_cost,
+			ask_order = EXCLUDED.ask_order,
+			amount_bid_order = EXCLUDED.amount_bid_order,
+			bid_cost = EXCLUDED.bid_cost,
+			bid_order = EXCLUDED.bid_order,
 			updated_at = CURRENT_TIMESTAMP
 	`
 
@@ -207,70 +186,21 @@ func (d *PostresRepository) UpsertDWHChains() error {
 		return err
 	}
 
-	return tx.Commit().Error
-}
-
-func (d *PostresRepository) UpsertDWHOrders() error {
-	tx := d.client.Begin()
-	if tx.Error != nil {
-		return tx.Error
-	}
-	defer tx.Rollback()
-
-	var count int64
-	if err := tx.Raw("SELECT COUNT(*) FROM dwh_chains").Scan(&count).Error; err != nil {
-		return err
-	}
-
-	if count == 0 {
-		if err := tx.Exec("DELETE FROM dwh_orders").Error; err != nil {
-			return err
-		}
-		return tx.Commit().Error
-	}
-
-	deleteQuery := `
-		WITH exchange_symbol AS (
-			SELECT exchange, symbol
-			FROM dwh_chains
-			GROUP BY exchange, symbol
-		)
-		DELETE FROM dwh_orders
-		WHERE (exchange, symbol) NOT IN (
-			SELECT exchange, symbol
-			FROM exchange_symbol
-		)
-	`
+	deleteQuery = fmt.Sprintf(`
+		DELETE * FROM raw_transactions
+		WHERE id = %d
+	`, transactions[0].ID)
 
 	if err := tx.Exec(deleteQuery).Error; err != nil {
 		return err
 	}
 
-	insertQuery := `
-		WITH exchange_symbol AS (
-			SELECT exchange, symbol
-			FROM dwh_chains
-			GROUP BY exchange, symbol
-		)
-		INSERT INTO dwh_orders (exchange, symbol)
-		SELECT
-			e.exchange,
-			e.symbol
-		FROM exchange_symbol e
-		ON CONFLICT (exchange, symbol) DO UPDATE
-		SET
-			updated_at = CURRENT_TIMESTAMP
-	`
-
-	if err := tx.Exec(insertQuery).Error; err != nil {
-		return err
-	}
-
 	return tx.Commit().Error
 }
 
-func (d *PostresRepository) SelectSymbols(market configs.Market) []string {
-	var symbols []string
+func (d *PostresRepository) SelectTransactions(id int64) []entity.Transaction {
+	var transactions []entity.Transaction
+
 	tx := d.client.Begin()
 	if tx.Error != nil {
 		d.log.Error("error begin transaction", d.log.ErrorC(tx.Error))
@@ -278,8 +208,27 @@ func (d *PostresRepository) SelectSymbols(market configs.Market) []string {
 	}
 	defer tx.Rollback()
 
-	if err := tx.Raw("SELECT symbol FROM dwh_orders WHERE exchange = ?", market).Scan(&symbols).Error; err != nil {
-		d.log.Error("error select symbols", d.log.ErrorC(err))
+	if err := tx.Raw(`
+		SELECT
+			id,
+			symbol,
+			chain,
+			market_from,
+			market_to,
+			spread,
+			with_draw_fee,
+			withdraw_max,
+			amount_coin,
+			amount_ask_order,
+			ask_cost,
+			ask_order,
+			amount_bid_order,
+			bid_cost,
+			bid_order,
+			updated_at
+		FROM dwh_transactions
+		WHERE id = ?`, id).Scan(&transactions).Error; err != nil {
+		d.log.Error("error select transactions", d.log.ErrorC(err))
 		return nil
 	}
 
@@ -288,111 +237,29 @@ func (d *PostresRepository) SelectSymbols(market configs.Market) []string {
 		return nil
 	}
 
-	return symbols
+	return transactions
 }
 
-func (d *PostresRepository) UpdateOrders(data entity.Orders) error {
-	tx := d.client.Begin()
-	if tx.Error != nil {
-		return tx.Error
+func (d *PostresRepository) TrancateRawTransactions() {
+	if err := d.client.Exec("TRUNCATE TABLE raw_transactions").Error; err != nil {
+		d.log.Error("error truncate raw_transactions", d.log.ErrorC(err))
 	}
 
-	defer tx.Rollback()
-
-	upsertQuery := `
-		UPDATE dwh_orders
-		SET
-			ask_price = ?,
-			bid_price = ?,
-			updated_at = NOW()
-		WHERE exchange = ? AND symbol = ?
-	`
-
-	askJSON, err := json.Marshal(data.AskPrice)
-	if err != nil {
-		d.log.Error("error marshal ask price", d.log.ErrorC(err))
-		askJSON = []byte{}
-	}
-	bidJSON, err := json.Marshal(data.BidPrice)
-	if err != nil {
-		d.log.Error("error marshal bid price", d.log.ErrorC(err))
-		bidJSON = []byte{}
-	}
-
-	if err := tx.Exec(upsertQuery, askJSON, bidJSON, data.Market, data.Symbol).Error; err != nil {
-		return err
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return err
-	}
-
-	return nil
 }
 
-func (d *PostresRepository) SelectDWHChains() ([]entity.Chain, error) {
-	rows, err := d.client.Raw(`
-		SELECT exchange, symbol, chain, withdraw_min, withdraw_max, withdraw_fee
-		FROM dwh_chains
-	`).Rows()
-	if err != nil {
-		d.log.Error("error select all from dwh_chains", d.log.ErrorC(err))
-		return nil, err
+func (d *PostresRepository) TrancateDwhTransactions() {
+	if err := d.client.Exec("TRUNCATE TABLE dwh_transactions").Error; err != nil {
+		d.log.Error("error truncate dwh_transactions", d.log.ErrorC(err))
 	}
-	defer rows.Close()
-
-	var chains []entity.Chain
-	for rows.Next() {
-		var chain entity.Chain
-		if err := rows.Scan(&chain.Market, &chain.Symbol, &chain.Chain, &chain.WithdrawMin, &chain.WithdrawMax,
-			&chain.WithdrawFee); err != nil {
-
-			d.log.Error("error scanning row from dwh_chains", d.log.ErrorC(err))
-			continue
-		}
-		chains = append(chains, chain)
-	}
-
-	return chains, nil
 }
 
-func (d *PostresRepository) SelectDWHOrders() ([]entity.Orders, error) {
-	rows, err := d.client.Raw(`
-		SELECT exchange, symbol, ask_price, bid_price
-		FROM dwh_orders
-	`).Rows()
-	if err != nil {
-		d.log.Error("error select all from dwh_orders", d.log.ErrorC(err))
-		return nil, err
+func (d *PostresRepository) DeleteSession(id int64) {
+	deleteQuery := fmt.Sprintf(`
+		DELETE * FROM dwh_transactions
+		WHERE id = %d
+	`, id)
+
+	if err := d.client.Exec(deleteQuery).Error; err != nil {
+		d.log.Error("error delete session", d.log.ErrorC(err))
 	}
-	defer rows.Close()
-
-	var orders []entity.Orders
-	for rows.Next() {
-		var order entity.Orders
-		var askPriceJSON, bidPriceJSON []byte
-
-		if err := rows.Scan(&order.Market, &order.Symbol, &askPriceJSON, &bidPriceJSON); err != nil {
-			d.log.Error("error scanning row from dwh_orders", d.log.ErrorC(err))
-			continue
-		}
-
-		if len(askPriceJSON) > 0 {
-			if err := json.Unmarshal(askPriceJSON, &order.AskPrice); err != nil {
-				d.log.Error("error unmarshaling ask_price JSON", d.log.ErrorC(err))
-				continue
-			}
-		}
-
-		if len(bidPriceJSON) > 0 {
-			if err := json.Unmarshal(bidPriceJSON, &order.BidPrice); err != nil {
-				d.log.Error("error unmarshaling bid_price JSON", d.log.ErrorC(err))
-				continue
-			}
-		}
-
-		orders = append(orders, order)
-	}
-
-	return orders, nil
 }
