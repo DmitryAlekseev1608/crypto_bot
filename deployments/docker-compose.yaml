@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+    bot:
+        build:
+            context: ../
+            dockerfile: build/bot/Dockerfile
+        restart: always
+        depends_on:
+            - server
+        environment:
+            - CONFIGS_APP=./configs/app.yaml
+        ports:
+            - 6062:6060

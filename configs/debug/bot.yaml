@@ -1,0 +1,49 @@
+log_to_file: false
+debug: true
+
+postgres:
+ host: localhost
+ port: 5432
+
+bybit:
+  URLCoin: https://api.bybit.com/v5/market/tickers?category=spot
+  URLchain: https://api.bybit.com/v5/asset/coin/query-info
+  bapi_recv: 20000
+
+kukoin:
+  URLCoin: https://api.kucoin.com/api/v1/market/allTickers
+  URLchain: https://api.kucoin.com/api/v3/currencies
+
+htx:
+  URLCoin: https://api.huobi.pro/v2/settings/common/symbols
+  URLchain: https://api.huobi.pro/v2/reference/currencies
+
+mexc:
+  time: https://api.mexc.com/api/v3/time
+  URLCoin:  https://api.mexc.com/api/v3/exchangeInfo
+  URLchain: https://api.mexc.com/api/v3/capital/config/getall
+  recv_window: 5000
+
+bingx:
+  time: https://open-api.bingx.com/openApi/swap/v2/server/time
+  URLCoin: https://open-api.bingx.com/openApi/spot/v1/common/symbols
+  URLchain: https://open-api.bingx.com/openApi/wallets/v1/capital/config/getall
+  recv_window: 5000
+
+ascendex:
+  URLCoin: https://ascendex.com/api/pro/v1/cash/products
+  URLchain: https://ascendex.com/api/pro/v2/assets
+
+bitget:
+  time: https://api.bitget.com/api/v2/public/time
+  URLCoin: https://api.bitget.com/api/v2/spot/public/symbols
+  URLchain: https://api.bitget.com/api/v2/spot/public/coins
+  recv_window: 5000
+
+xt:
+  URLCoin: https://sapi.xt.com/v4/public/symbol
+  URLchain: https://sapi.xt.com/v4/public/wallet/support/currency
+
+bitmart:
+  URLCoin: https://api-cloud.bitmart.com/spot/v1/symbols
+  URLchain: https://api-cloud.bitmart.com/account/v1/currencies
