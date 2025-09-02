@@ -286,5 +286,8 @@ func (d *PostresRepository) SelectTransactionsBySymbol(id int64, symbol, marketF
 		d.log.Error("error select transactions", d.log.ErrorC(err))
 	}
 	transactions := transactions{transaction}
+	if len(transactions.toEntity()) == 0 {
+		return entity.Transaction{}
+	}
 	return transactions.toEntity()[0]
 }
