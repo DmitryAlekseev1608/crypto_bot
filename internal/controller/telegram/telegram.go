@@ -67,7 +67,7 @@ func (t TelegramController) Run(ctx context.Context) {
 				go func() {
 					semathore <- struct{}{}
 					defer func() { <-semathore }()
-					ticker := time.NewTicker(time.Second *5)
+					ticker := time.NewTicker(time.Second * 120)
 					for timeT := time.Now(); ; timeT = <-ticker.C {
 						_ = timeT
 
