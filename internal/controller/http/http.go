@@ -15,14 +15,18 @@ import (
 var _ controller.Server = (*Server)(nil)
 
 type Server struct {
-	cfg    *viper.Viper
-	log    logger.Logger
-	client *http.Client
+	cfg         viper.Viper
+	log         logger.Logger
+	client      *http.Client
+	taskUseCase usecase.TaskUseCase
 }
 
-func New(spotUseCase usecase.TaskUseCase) Server {
+func New(cfg viper.Viper, log logger.Logger, taskUseCase usecase.TaskUseCase) Server {
 	server := Server{
-		client: &http.Client{},
+		client:      &http.Client{},
+		cfg:         cfg,
+		log:         log,
+		taskUseCase: taskUseCase,
 	}
 	return server
 }

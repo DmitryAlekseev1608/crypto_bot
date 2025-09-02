@@ -11,4 +11,5 @@ type DbAdapter interface {
 	DeleteSession(id int64)
 	TrancateRawTransactions()
 	TrancateDwhTransactions()
+	SelectTransactionsBySymbol(id int64, symbol, marketFrom, marketTo string) entity.Transaction
 }

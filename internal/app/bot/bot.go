@@ -1,4 +1,4 @@
-package chain
+package bot
 
 import (
 	"context"
@@ -25,15 +25,16 @@ func NewApp(ctx context.Context, log logger.Logger, cfg viper.Viper) App {
 
 func (a App) Run() error {
 	a.log.Info("Init adapters and repositories")
-	a.serviceProvider.setMarketController()
+	a.serviceProvider.setServerController()
+	a.serviceProvider.setTelegramController()
 	a.serviceProvider.setDBAdapter()
 	defer a.serviceProvider.dbAdapter.Close()
 
 	a.log.Info("init usecase")
-	a.serviceProvider.setChainUseCase()
+	a.serviceProvider.setTaskUseCase()
 
 	a.log.Info("all layers was init, run tasks")
-	a.serviceProvider.chainUseCase.Run()
+	a.serviceProvider.telegramController.Run(a.ctx)
 
 	a.log.Info("Have a nice day!")
 	return nil

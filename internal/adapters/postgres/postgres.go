@@ -108,10 +108,10 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 	var insertArgs []interface{}
 
 	for i, transaction := range transactions {
-		values = append(values, fmt.Sprintf(`($%d, $%s, $%s, $%s, $%s, $%f, $%f, $%f, $%f, $%f,
-			$%f, $%f, $%f, $%f, $%f, $%f, $%f, $%f, $%v)`,
-			i*6+1, i*6+2, i*6+3, i*6+4, i*6+5, i*6+6, i*6+7, i*6+8, i*6+9, i*6+10, i*6+11, i*6+12,
-			i*6+13, i*6+14, i*6+15, i*6+16))
+		values = append(values, fmt.Sprintf(`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d,
+			$%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
+			i*17+1, i*17+2, i*17+3, i*17+4, i*17+5, i*17+6, i*17+7, i*17+8, i*17+9, i*17+10,
+			i*17+11, i*17+12, i*17+13, i*17+14, i*17+15, i*17+16, i*17+17))
 		insertArgs = append(insertArgs, transaction.ID, transaction.Symbol, transaction.Chain,
 			transaction.MarketFrom, transaction.MarketTo, transaction.Spread,
 			transaction.WithDrawFee, transaction.WithdrawMax, transaction.AmountCoin,
@@ -127,7 +127,7 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 		VALUES %s
 	`, strings.Join(values, ","))
 
-	if err := tx.Exec(insertQuery).Error; err != nil {
+	if err := tx.Exec(insertQuery, insertArgs...).Error; err != nil {
 		return err
 	}
 
@@ -262,4 +262,17 @@ func (d *PostresRepository) DeleteSession(id int64) {
 	if err := d.client.Exec(deleteQuery).Error; err != nil {
 		d.log.Error("error delete session", d.log.ErrorC(err))
 	}
+}
+
+func (d *PostresRepository) SelectTransactionsBySymbol(id int64, symbol, marketFrom,
+	marketTo string) entity.Transaction {
+
+	var transactions entity.Transaction
+
+	if err := d.client.Raw(`
+		SELECT * FROM dwh_transactions WHERE id=?, symbol = ?, market_from = ?, market_to = ?`, id,
+		symbol, marketFrom, marketTo).Scan(&transactions).Error; err != nil {
+		d.log.Error("error select transactions", d.log.ErrorC(err))
+	}
+	return transactions
 }

@@ -9,8 +9,7 @@ type TaskUseCase interface {
 	DeleteSession(id int64)
 	TrancateRawTransactions()
 	TrancateDwhTransactions()
-}
-
-type InfoUseCase interface {
+	GetInfoAboutTransactions(id int64, marketFrom, marketTo, symbol string) string
 	GetTransactions(id int64) []entity.Transaction
+	GetInstruction() string
 }

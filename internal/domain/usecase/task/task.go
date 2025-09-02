@@ -6,6 +6,7 @@ import (
 	"crypto_pro/internal/domain/entity"
 	"crypto_pro/internal/domain/usecase"
 	"crypto_pro/pkg/logger"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -18,8 +19,9 @@ type TaskUseCase struct {
 	dbAdapter        adapters.DbAdapter
 }
 
-func New(log logger.Logger) TaskUseCase {
-	return TaskUseCase{log: log}
+func New(log logger.Logger, serverController controller.Server, dbAdapter adapters.DbAdapter,
+) TaskUseCase {
+	return TaskUseCase{log: log, serverController: serverController, dbAdapter: dbAdapter}
 }
 
 func (b TaskUseCase) HandleRequest(requestIn string) []entity.Transaction {
@@ -65,4 +67,43 @@ func (b TaskUseCase) TrancateRawTransactions() {
 
 func (b TaskUseCase) TrancateDwhTransactions() {
 	b.dbAdapter.TrancateDwhTransactions()
+}
+
+func (b TaskUseCase) GetTransactions(id int64) []entity.Transaction {
+	return b.dbAdapter.SelectTransactions(id)
+}
+
+func (b TaskUseCase) GetInstruction() string {
+	return `
+	Привет! Я чат-бот для биржевой аналитики CryptoPro. Моя основная задача помогать находить
+	наиболее выгодные биржевые транзакции для спотовых продаж. Я постоянно развиваюсь. На текущий
+	момент я умею работать только с биржами BYBIT и KUKOIN. Просто введи сумму необходимого 
+	количества USDT (целое) и spread (до одного знака после запятой) в % через пробел
+	(пример 100 0.3), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования
+	бирж отправь s в чат и смотри последнее полученное сообщение, нажми на интересующую сделку и
+	получишь всю необходимую информацию по ней.
+	`
+}
+
+func (b TaskUseCase) GetInfoAboutTransactions(id int64, marketFrom, marketTo, symbol string,
+	) string {
+
+	transaction := b.dbAdapter.SelectTransactionsBySymbol(id, symbol, marketFrom, marketTo)
+	msgContent := fmt.Sprintf("%v \n", transaction.Symbol)
+	msgContent += fmt.Sprintf("📕|%v| \n", transaction.MarketFrom)
+	msgContent += fmt.Sprintf("Комиссия: %v %v \n", transaction.WithDrawFee, transaction.Symbol)
+	msgContent += fmt.Sprintf("Объем допустимый: %v %v \n", transaction.WithdrawMax,
+		transaction.Symbol)
+	msgContent += fmt.Sprintf("Сеть: %v \n", transaction.Chain)
+	msgContent += fmt.Sprintf("Объем: %.4f %v \n", transaction.AmountCoin, transaction.Symbol)
+	msgContent += fmt.Sprintf("Кол-во ордеров: %v \n", transaction.AmountAskOrder)
+	msgContent += fmt.Sprintf("Стоимость: %.2f USDT \n", transaction.AskCost)
+	msgContent += fmt.Sprintf("Ордера (Цена/Кол-во): %v \n", transaction.AskOrder)
+	msgContent += fmt.Sprintf("📗|%v| \n", transaction.MarketTo)
+	msgContent += fmt.Sprintf("Кол-во ордеров: %v \n", transaction.AmountBidOrder)
+	msgContent += fmt.Sprintf("Стоимость: %.2f USDT \n", transaction.BidCost)
+	msgContent += fmt.Sprintf("Ордера (Цена/Кол-во): %v \n", transaction.BidOrder)
+	msgContent += "--- \n"
+	msgContent += fmt.Sprintf("💰 Спред: %.2f %%", transaction.Spread)
+	return msgContent
 }

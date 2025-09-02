@@ -1,13 +1,14 @@
-package chain
+package bot
 
 import (
 	"context"
 	"crypto_pro/internal/adapters"
 	"crypto_pro/internal/adapters/postgres"
 	"crypto_pro/internal/controller"
-	"crypto_pro/internal/controller/market"
+	"crypto_pro/internal/controller/http"
+	"crypto_pro/internal/controller/telegram"
 	"crypto_pro/internal/domain/usecase"
-	"crypto_pro/internal/domain/usecase/chain"
+	"crypto_pro/internal/domain/usecase/task"
 
 	"crypto_pro/pkg/logger"
 
@@ -15,12 +16,13 @@ import (
 )
 
 type serviceProvider struct {
-	ctx              context.Context
-	log              logger.Logger
-	cfg              viper.Viper
-	marketController controller.MarkerController
-	dbAdapter        adapters.DbAdapter
-	chainUseCase     usecase.ChainUseCase
+	ctx                context.Context
+	log                logger.Logger
+	cfg                viper.Viper
+	serverController   controller.Server
+	dbAdapter          adapters.DbAdapter
+	telegramController controller.TelegramController
+	taskUseCase        usecase.TaskUseCase
 }
 
 func newServiceProvider(ctx context.Context, log logger.Logger, cfg viper.Viper) *serviceProvider {
@@ -31,12 +33,12 @@ func newServiceProvider(ctx context.Context, log logger.Logger, cfg viper.Viper)
 	}
 }
 
-func (s *serviceProvider) setMarketController() controller.MarkerController {
-	if s.marketController == nil {
-		marketController := market.New(s.cfg, s.log)
-		s.marketController = marketController
+func (s *serviceProvider) setServerController() controller.Server {
+	if s.serverController == nil {
+		serverController := http.New(s.cfg, s.log, s.taskUseCase)
+		s.serverController = serverController
 	}
-	return s.marketController
+	return s.serverController
 }
 
 func (s *serviceProvider) setDBAdapter() adapters.DbAdapter {
@@ -47,10 +49,18 @@ func (s *serviceProvider) setDBAdapter() adapters.DbAdapter {
 	return s.dbAdapter
 }
 
-func (s *serviceProvider) setChainUseCase() usecase.ChainUseCase {
-	if s.chainUseCase == nil {
-		chainUseCase := chain.New(s.cfg, s.log, s.marketController, s.dbAdapter)
-		s.chainUseCase = chainUseCase
+func (s *serviceProvider) setTaskUseCase() usecase.TaskUseCase {
+	if s.taskUseCase == nil {
+		taskUseCase := task.New(s.log, s.serverController, s.dbAdapter)
+		s.taskUseCase = taskUseCase
 	}
-	return s.chainUseCase
+	return s.taskUseCase
+}
+
+func (s *serviceProvider) setTelegramController() controller.TelegramController {
+	if s.telegramController == nil {
+		telegramController := telegram.New(s.log, s.taskUseCase)
+		s.telegramController = telegramController
+	}
+	return s.telegramController
 }
