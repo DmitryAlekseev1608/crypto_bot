@@ -61,3 +61,39 @@ func (t transactions) toEntity() []entity.Transaction {
 	}
 	return response
 }
+
+func fromEntityToModel(transactionsEntity []entity.Transaction) (transactions, error) {
+
+	transactions := transactions{}
+
+	for _, transactionRow := range transactionsEntity {
+		askOrderJSON, err := json.Marshal(transactionRow.AskOrder)
+		if err != nil {
+			return nil, err
+		}
+		bidOrderJSON, err := json.Marshal(transactionRow.BidOrder)
+		if err != nil {
+			return nil, err
+		}
+
+		transactions = append(transactions, transaction{
+			ID:             transactionRow.ID,
+			Symbol:         transactionRow.Symbol,
+			Chain:          transactionRow.Chain,
+			MarketFrom:     transactionRow.MarketFrom,
+			MarketTo:       transactionRow.MarketTo,
+			Spread:         transactionRow.Spread,
+			WithDrawFee:    transactionRow.WithDrawFee,
+			WithdrawMax:    transactionRow.WithdrawMax,
+			AmountCoin:     transactionRow.AmountCoin,
+			AmountAskOrder: transactionRow.AmountAskOrder,
+			AskCost:        transactionRow.AskCost,
+			AskOrder:       askOrderJSON,
+			AmountBidOrder: transactionRow.AmountBidOrder,
+			BidCost:        transactionRow.BidCost,
+			BidOrder:       bidOrderJSON,
+		})
+	}
+
+	return transactions, nil
+}

@@ -5,7 +5,6 @@ import (
 	"crypto_pro/internal/adapters"
 	"crypto_pro/internal/domain/entity"
 	"crypto_pro/pkg/logger"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -98,7 +97,7 @@ func (d *PostresRepository) Close() {
 	client.Close()
 }
 
-func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transaction) error {
+func (d *PostresRepository) UpsertDWHTransactions(transactionsEntity []entity.Transaction) error {
 	tx := d.client.Begin()
 	if tx.Error != nil {
 		return tx.Error
@@ -108,28 +107,24 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 	var values []string
 	var insertArgs []interface{}
 
+	transactionsModel, err := fromEntityToModel(transactionsEntity)
+	if err != nil {
+		return err
+	}
+
 	timeNow := time.Now()
 
-	for i, transaction := range transactions {
+	for i, transaction := range transactionsModel {
 		values = append(values, fmt.Sprintf(`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d,
 		$%d, $%d, $%d, $%d, $%d, $%d)`,
 			i*16+1, i*16+2, i*16+3, i*16+4, i*16+5, i*16+6, i*16+7, i*16+8, i*16+9, i*16+10,
 			i*16+11, i*16+12, i*16+13, i*16+14, i*16+15, i*16+16))
 
-		askOrderJSON, err := json.Marshal(transaction.AskOrder)
-		if err != nil {
-			return err
-		}
-		bidOrderJSON, err := json.Marshal(transaction.BidOrder)
-		if err != nil {
-			return err
-		}
-
 		insertArgs = append(insertArgs, transaction.ID, transaction.Symbol, transaction.Chain,
 			transaction.MarketFrom, transaction.MarketTo, transaction.Spread,
 			transaction.WithDrawFee, transaction.WithdrawMax, transaction.AmountCoin,
-			transaction.AmountAskOrder, transaction.AskCost, string(askOrderJSON),
-			transaction.AmountBidOrder, transaction.BidCost, string(bidOrderJSON),
+			transaction.AmountAskOrder, transaction.AskCost, transaction.AskOrder,
+			transaction.AmountBidOrder, transaction.BidCost, transaction.BidOrder,
 			timeNow)
 	}
 
@@ -200,7 +195,7 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 	deleteQuery = fmt.Sprintf(`
 		DELETE FROM raw_transactions
 		WHERE id = %d
-	`, transactions[0].ID)
+	`, transactionsModel[0].ID)
 
 	if err := tx.Exec(deleteQuery).Error; err != nil {
 		return err
@@ -266,7 +261,7 @@ func (d *PostresRepository) TrancateDwhTransactions() {
 
 func (d *PostresRepository) DeleteSession(id int64) {
 	deleteQuery := fmt.Sprintf(`
-		DELETE * FROM dwh_transactions
+		DELETE FROM dwh_transactions
 		WHERE id = %d
 	`, id)
 

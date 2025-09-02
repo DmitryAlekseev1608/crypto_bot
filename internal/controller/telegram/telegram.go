@@ -52,15 +52,15 @@ func (t TelegramController) Run(ctx context.Context) {
 			t.log.Info("Received message", t.log.StringC("Message", update.Message.Text),
 				t.log.Int64C("ChatID", update.Message.Chat.ID), t.log.IntC("Semaphore",
 					len(semathore)))
-			if _, exists := activeSessions[update.Message.Chat.ID]; exists {
-				t.sendMessage("Сессия активна", update, keyboard)
-				continue
-			}
 
 			switch {
 			case update.Message.Text == "Инструкция":
 				t.sendMessage(t.taskUseCase.GetInstruction(), update, keyboard)
 			case re.MatchString(update.Message.Text):
+				if _, exists := activeSessions[update.Message.Chat.ID]; exists {
+					t.sendMessage("Сессия активна", update, keyboard)
+					continue
+				}
 				ctx, cancel := context.WithCancel(context.Background())
 				activeSessions[update.Message.Chat.ID] = clientUpdate{cancelF: cancel,
 					time: time.Now()}
