@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -18,6 +19,7 @@ var _ controller.TelegramController = (*TelegramController)(nil)
 type TelegramController struct {
 	log         logger.Logger
 	bot         *tgbotapi.BotAPI
+	updates     tgbotapi.UpdateConfig
 	taskUseCase usecase.TaskUseCase
 }
 
@@ -26,17 +28,17 @@ func New(log logger.Logger, taskUseCase usecase.TaskUseCase) TelegramController 
 	if err != nil {
 		panic(err)
 	}
-	bot.Debug = true
+	bot.Debug = false
 	log.Info("Authorized on account", log.StringC("UserName", bot.Self.UserName))
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+	updates := tgbotapi.NewUpdate(0)
+	updates.Timeout = 60
 
-	return TelegramController{log: log, bot: bot, taskUseCase: taskUseCase}
+	return TelegramController{log: log, bot: bot, taskUseCase: taskUseCase, updates: updates}
 }
 
 func (t TelegramController) Run(ctx context.Context) {
-	var activeSessions = make(map[int64]context.CancelFunc)
-	updates := t.bot.GetUpdatesChan(tgbotapi.NewUpdate(0))
+	var activeSessions = make(map[int64]clientUpdate)
+	updates := t.bot.GetUpdatesChan(t.updates)
 	keyboard := tgbotapi.NewReplyKeyboard(tgbotapi.NewKeyboardButtonRow(
 		tgbotapi.NewKeyboardButton("Инструкция")))
 	re := regexp.MustCompile(`^\d+\s\d+(\.\d+)?$`)
@@ -60,24 +62,28 @@ func (t TelegramController) Run(ctx context.Context) {
 				t.sendMessage(t.taskUseCase.GetInstruction(), update, keyboard)
 			case re.MatchString(update.Message.Text):
 				ctx, cancel := context.WithCancel(context.Background())
-				activeSessions[update.Message.Chat.ID] = cancel
+				activeSessions[update.Message.Chat.ID] = clientUpdate{cancelF: cancel,
+					time: time.Now()}
 				go func() {
 					semathore <- struct{}{}
 					defer func() { <-semathore }()
-					for {
+					ticker := time.NewTicker(time.Second *5)
+					for timeT := time.Now(); ; timeT = <-ticker.C {
+						_ = timeT
+
 						select {
 						case <-ctx.Done():
 							return
 						default:
-							t.handleRequest(update.Message)
+							t.handleRequest(update)
 						}
 					}
 				}()
 				t.sendMessage("Сессия начата. Отправьте 's' для отмены.", update, keyboard)
 
 			case update.Message.Text == "s":
-				if cancel, exists := activeSessions[update.Message.Chat.ID]; exists {
-					cancel()
+				if clientUpdate, exists := activeSessions[update.Message.Chat.ID]; exists {
+					clientUpdate.cancelF()
 					delete(activeSessions, update.Message.Chat.ID)
 					t.taskUseCase.DeleteSession(update.Message.Chat.ID)
 					t.sendMessage("Сессия отменена.", update, keyboard)
@@ -104,8 +110,8 @@ func (t TelegramController) sendMessage(text string, update tgbotapi.Update,
 	t.bot.Send(msg)
 }
 
-func (t TelegramController) handleRequest(update *tgbotapi.Message) {
-	transactions := t.taskUseCase.HandleRequest(update.Text)
+func (t TelegramController) handleRequest(update tgbotapi.Update) {
+	transactions := t.taskUseCase.HandleRequest(update.Message.Text, update.Message.Chat.ID)
 	buttons := []tgbotapi.InlineKeyboardButton{}
 
 	for _, transaction := range transactions {
@@ -116,7 +122,7 @@ func (t TelegramController) handleRequest(update *tgbotapi.Message) {
 		buttons = append(buttons, button)
 	}
 	inlineKeyboard := t.createInlineKeyboard(buttons)
-	msg := tgbotapi.NewMessage(update.Chat.ID, "Выберите подходящую Вам сделку:")
+	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Выберите подходящую Вам сделку:")
 	msg.ReplyMarkup = inlineKeyboard
 	t.bot.Send(msg)
 }
@@ -138,7 +144,7 @@ func (t TelegramController) sendInfo(update tgbotapi.Update) {
 	callbackQuery := update.CallbackQuery
 	t.log.Info("User pressed button", t.log.StringC("Data", callbackQuery.Data))
 	marketFrom, marketTo, symbol := t.getKeyFromUpdate(callbackQuery)
-	msgContent := t.taskUseCase.GetInfoAboutTransactions(update.Message.Chat.ID, marketFrom,
+	msgContent := t.taskUseCase.GetInfoAboutTransactions(callbackQuery.Message.Chat.ID, marketFrom,
 		marketTo, symbol)
 	msg := tgbotapi.NewMessage(callbackQuery.Message.Chat.ID, msgContent)
 	t.bot.Send(msg)

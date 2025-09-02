@@ -5,6 +5,7 @@ import (
 	"crypto_pro/internal/adapters"
 	"crypto_pro/internal/domain/entity"
 	"crypto_pro/pkg/logger"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -107,21 +108,33 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 	var values []string
 	var insertArgs []interface{}
 
+	timeNow := time.Now()
+
 	for i, transaction := range transactions {
 		values = append(values, fmt.Sprintf(`($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d,
-			$%d, $%d, $%d, $%d, $%d, $%d, $%d)`,
-			i*17+1, i*17+2, i*17+3, i*17+4, i*17+5, i*17+6, i*17+7, i*17+8, i*17+9, i*17+10,
-			i*17+11, i*17+12, i*17+13, i*17+14, i*17+15, i*17+16, i*17+17))
+		$%d, $%d, $%d, $%d, $%d, $%d)`,
+			i*16+1, i*16+2, i*16+3, i*16+4, i*16+5, i*16+6, i*16+7, i*16+8, i*16+9, i*16+10,
+			i*16+11, i*16+12, i*16+13, i*16+14, i*16+15, i*16+16))
+
+		askOrderJSON, err := json.Marshal(transaction.AskOrder)
+		if err != nil {
+			return err
+		}
+		bidOrderJSON, err := json.Marshal(transaction.BidOrder)
+		if err != nil {
+			return err
+		}
+
 		insertArgs = append(insertArgs, transaction.ID, transaction.Symbol, transaction.Chain,
 			transaction.MarketFrom, transaction.MarketTo, transaction.Spread,
 			transaction.WithDrawFee, transaction.WithdrawMax, transaction.AmountCoin,
-			transaction.AmountAskOrder, transaction.AskCost, transaction.AskOrder,
-			transaction.AmountBidOrder, transaction.BidCost, transaction.BidOrder,
-			time.Now())
+			transaction.AmountAskOrder, transaction.AskCost, string(askOrderJSON),
+			transaction.AmountBidOrder, transaction.BidCost, string(bidOrderJSON),
+			timeNow)
 	}
 
 	insertQuery := fmt.Sprintf(`
-		INSERT INTO dwh_transactions (id, symbol, chain, market_from, market_to, spread, 
+		INSERT INTO raw_transactions (id, symbol, chain, market_from, market_to, spread, 
 			with_draw_fee, withdraw_max, amount_coin, amount_ask_order, ask_cost, ask_order,
 			amount_bid_order, bid_cost, bid_order, updated_at)
 		VALUES %s
@@ -164,8 +177,6 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 			r.bid_cost,
 			r.bid_order,
 			r.updated_at
-			r.withdraw_max,
-			r.withdraw_fee
 		FROM raw_transactions r
 		ON CONFLICT (id, symbol, chain, market_from, market_to) DO UPDATE
 		SET
@@ -187,7 +198,7 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 	}
 
 	deleteQuery = fmt.Sprintf(`
-		DELETE * FROM raw_transactions
+		DELETE FROM raw_transactions
 		WHERE id = %d
 	`, transactions[0].ID)
 
@@ -199,7 +210,7 @@ func (d *PostresRepository) UpsertDWHTransactions(transactions []entity.Transact
 }
 
 func (d *PostresRepository) SelectTransactions(id int64) []entity.Transaction {
-	var transactions []entity.Transaction
+	var transactions transactions
 
 	tx := d.client.Begin()
 	if tx.Error != nil {
@@ -237,7 +248,7 @@ func (d *PostresRepository) SelectTransactions(id int64) []entity.Transaction {
 		return nil
 	}
 
-	return transactions
+	return transactions.toEntity()
 }
 
 func (d *PostresRepository) TrancateRawTransactions() {
@@ -267,12 +278,13 @@ func (d *PostresRepository) DeleteSession(id int64) {
 func (d *PostresRepository) SelectTransactionsBySymbol(id int64, symbol, marketFrom,
 	marketTo string) entity.Transaction {
 
-	var transactions entity.Transaction
+	var transaction transaction
 
 	if err := d.client.Raw(`
-		SELECT * FROM dwh_transactions WHERE id=?, symbol = ?, market_from = ?, market_to = ?`, id,
-		symbol, marketFrom, marketTo).Scan(&transactions).Error; err != nil {
+		SELECT * FROM dwh_transactions WHERE id=$1 AND symbol=$2 AND market_from=$3 AND
+			market_to=$4`, id, symbol, marketFrom, marketTo).Scan(&transaction).Error; err != nil {
 		d.log.Error("error select transactions", d.log.ErrorC(err))
 	}
-	return transactions
+	transactions := transactions{transaction}
+	return transactions.toEntity()[0]
 }

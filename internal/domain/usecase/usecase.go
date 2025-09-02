@@ -5,7 +5,7 @@ import (
 )
 
 type TaskUseCase interface {
-	HandleRequest(requestIn string) []entity.Transaction
+	HandleRequest(requestIn string, id int64) []entity.Transaction
 	DeleteSession(id int64)
 	TrancateRawTransactions()
 	TrancateDwhTransactions()

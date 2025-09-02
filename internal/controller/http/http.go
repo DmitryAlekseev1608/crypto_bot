@@ -6,6 +6,7 @@ import (
 	"crypto_pro/internal/domain/usecase"
 	"crypto_pro/pkg/logger"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -32,7 +33,8 @@ func New(cfg viper.Viper, log logger.Logger, taskUseCase usecase.TaskUseCase) Se
 }
 
 func (s Server) GetSpotHandler(usdt, spread float64) []entity.Transaction {
-	response, err := s.client.Get(s.cfg.GetString("endpoint.spot"))
+	url := fmt.Sprintf("%s?usdt=%f&spread=%f", s.cfg.GetString("endpoint.spot"), usdt, spread)
+	response, err := s.client.Get(url)
 	if err != nil {
 		s.log.Error("failed to get spot", s.log.ErrorC(err))
 		return nil

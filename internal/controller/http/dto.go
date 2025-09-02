@@ -7,28 +7,32 @@ import (
 type transactions []transaction
 
 type transaction struct {
-	ID             int     `json:"id"`
-	Symbol         string  `json:"symbol"`
-	Chain          string  `json:"chain"`
-	MarketFrom     string  `json:"market_from"`
-	MarketTo       string  `json:"market_to"`
-	Spread         float64 `json:"spread"`
-	WithDrawFee    float64 `json:"with_draw_fee"`
-	WithdrawMax    float64 `json:"withdraw_max"`
-	AmountCoin     float64 `json:"amount_coin"`
-	AmountAskOrder float64 `json:"amount_ask_order"`
-	AskCost        float64 `json:"ask_cost"`
-	AskOrder       float64 `json:"ask_order"`
-	AmountBidOrder float64 `json:"amount_bid_order"`
-	BidCost        float64 `json:"bid_cost"`
-	BidOrder       float64 `json:"bid_order"`
+	Symbol         string  `json:"Symbol"`
+	Chain          string  `json:"Chain"`
+	MarketFrom     string  `json:"MarketFrom"`
+	MarketTo       string  `json:"MarketTo"`
+	Spread         float64 `json:"Spread"`
+	WithDrawFee    float64 `json:"WithdrawFee"`
+	WithdrawMax    float64 `json:"WithdrawMax"`
+	AmountCoin     float64 `json:"AmountCoin"`
+	AmountAskOrder float64 `json:"AmountAskOrder"`
+	AskCost        float64 `json:"AskCost"`
+	AskOrder       Orders  `json:"AskOrder"`
+	AmountBidOrder float64 `json:"AmountBidOrder"`
+	BidCost        float64 `json:"BidCost"`
+	BidOrder       Orders  `json:"BidOrder"`
+}
+
+type Orders []Order
+type Order struct {
+	Price float64 `json:"Price"`
+	Qty   float64 `json:"Qty"`
 }
 
 func (t transactions) toEntity() []entity.Transaction {
 	response := []entity.Transaction{}
 	for _, val := range t {
 		response = append(response, entity.Transaction{
-			ID:             val.ID,
 			Symbol:         val.Symbol,
 			Chain:          val.Chain,
 			MarketFrom:     val.MarketFrom,
@@ -39,10 +43,21 @@ func (t transactions) toEntity() []entity.Transaction {
 			AmountCoin:     val.AmountCoin,
 			AmountAskOrder: val.AmountAskOrder,
 			AskCost:        val.AskCost,
-			AskOrder:       val.AskOrder,
+			AskOrder:       val.AskOrder.toEntity(),
 			AmountBidOrder: val.AmountBidOrder,
 			BidCost:        val.BidCost,
-			BidOrder:       val.BidOrder,
+			BidOrder:       val.BidOrder.toEntity(),
+		})
+	}
+	return response
+}
+
+func (t Orders) toEntity() []entity.Order {
+	response := []entity.Order{}
+	for _, val := range t {
+		response = append(response, entity.Order{
+			Price: val.Price,
+			Qty:   val.Qty,
 		})
 	}
 	return response

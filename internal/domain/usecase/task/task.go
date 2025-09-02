@@ -24,9 +24,12 @@ func New(log logger.Logger, serverController controller.Server, dbAdapter adapte
 	return TaskUseCase{log: log, serverController: serverController, dbAdapter: dbAdapter}
 }
 
-func (b TaskUseCase) HandleRequest(requestIn string) []entity.Transaction {
+func (b TaskUseCase) HandleRequest(requestIn string, id int64) []entity.Transaction {
 	usdt, spread := b.getDataIn(requestIn)
 	transactions := b.serverController.GetSpotHandler(usdt, spread)
+	for i := range transactions {
+		transactions[i].SetID(id)
+	}
 	b.dbAdapter.UpsertDWHTransactions(transactions)
 	response := make([]entity.Transaction, len(transactions))
 	for i, transaction := range transactions {
@@ -86,7 +89,7 @@ func (b TaskUseCase) GetInstruction() string {
 }
 
 func (b TaskUseCase) GetInfoAboutTransactions(id int64, marketFrom, marketTo, symbol string,
-	) string {
+) string {
 
 	transaction := b.dbAdapter.SelectTransactionsBySymbol(id, symbol, marketFrom, marketTo)
 	msgContent := fmt.Sprintf("%v \n", transaction.Symbol)

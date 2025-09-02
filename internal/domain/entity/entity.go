@@ -3,7 +3,7 @@ package entity
 import "time"
 
 type Transaction struct {
-	ID             int
+	ID             int64
 	Symbol         string
 	Chain          string
 	MarketFrom     string
@@ -14,9 +14,19 @@ type Transaction struct {
 	AmountCoin     float64
 	AmountAskOrder float64
 	AskCost        float64
-	AskOrder       float64
+	AskOrder       []Order
 	AmountBidOrder float64
 	BidCost        float64
-	BidOrder       float64
+	BidOrder       []Order
 	UpdatedAt      time.Time
+}
+
+type Order struct {
+	Price float64
+	Qty   float64
+}
+
+
+func (t *Transaction) SetID(id int64) {
+	t.ID = id
 }

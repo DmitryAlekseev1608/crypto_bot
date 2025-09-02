@@ -8,7 +8,11 @@
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/bot",
             "env": {
-                "CONFIGS_APP": "${workspaceFolder}/app.yaml"
+                "CONFIGS_APP": "${workspaceFolder}/configs/debug/bot.yaml",
+                "POSTGRES_DB": "crypto_pro",
+                "POSTGRES_USER": "alex",
+                "POSTGRES_PASSWORD": "655707",
+                "TELEGRAM_APITOKEN": "8155040766:AAEJBMXe4Yb_sHz_wxn0SuiohG3n5BvoP-s"
             },
         },
     ]
