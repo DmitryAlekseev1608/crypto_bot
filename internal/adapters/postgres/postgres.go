@@ -35,32 +35,44 @@ func New(ctx context.Context, cfg viper.Viper, log logger.Logger) *PostresReposi
 		cfg: cfg,
 		log: log,
 	}
-	err := db.init()
-	if err != nil {
-		log.Panic("failed to init db", log.ErrorC(err))
+
+	if err := db.createConnection(cfg.GetString("postgres.host_local")); err != nil {
+		log.Info("failed to init db in localhost", log.ErrorC(err))
+		if err := db.createConnectionRemote(); err != nil {
+			log.Panic("failed to init db in remote", log.ErrorC(err))
+		}
 	}
+
 	return &db
 }
 
-func (d *PostresRepository) init() error {
+func (d *PostresRepository) createConnectionRemote() error {
 	return d.repeatConnection(
 		d.ctx,
 		func() error {
-			conn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-				d.cfg.GetString("postgres.host"), d.cfg.GetInt("postgres.port"), os.Getenv("POSTGRES_USER"),
-				os.Getenv("POSTGRES_PASSWORD"), os.Getenv("POSTGRES_DB"))
-			client, err := gorm.Open(postgres.Open(conn), &gorm.Config{
-				Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-			})
-			if err != nil {
+			if err := d.createConnection(d.cfg.GetString("postgres.host_remote")); err != nil {
 				d.log.Error("error create connection to DB", d.log.ErrorC(err))
 				return err
 			}
-			d.client = client
 			return nil
 		},
 		OpErr,
 	)
+}
+
+func (d *PostresRepository) createConnection(host string) error {
+	conn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host,
+		d.cfg.GetInt("postgres.port"), os.Getenv("POSTGRES_USER"),
+		os.Getenv("POSTGRES_PASSWORD"), os.Getenv("POSTGRES_DB"))
+	client, err := gorm.Open(postgres.Open(conn), &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
+	if err != nil {
+		d.log.Error("error create connection to DB", d.log.ErrorC(err))
+		return err
+	}
+	d.client = client
+	return nil
 }
 
 func (d *PostresRepository) repeatConnection(ctx context.Context, fn func() error, errType error) error {

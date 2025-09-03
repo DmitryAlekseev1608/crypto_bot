@@ -1,0 +1,11 @@
+log_to_file: false
+debug: true
+
+postgres:
+ host_local: localhost
+ host_remote: postgres
+ port: 5432
+
+endpoint:
+ spot_local: http://localhost:8080/spot
+ spot_remote: http://spot:8080/spot

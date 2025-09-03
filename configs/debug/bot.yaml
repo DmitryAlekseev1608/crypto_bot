@@ -1,9 +1,0 @@
-log_to_file: false
-debug: true
-
-postgres:
- host: localhost
- port: 5432
-
-endpoint:
- spot: http://localhost:8080/spot

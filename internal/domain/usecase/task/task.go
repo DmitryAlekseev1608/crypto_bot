@@ -93,7 +93,7 @@ func (b TaskUseCase) GetInfoAboutTransactions(id int64, marketFrom, marketTo, sy
 
 	transaction := b.dbAdapter.SelectTransactionsBySymbol(id, symbol, marketFrom, marketTo)
 	if transaction.ID == 0 {
-		return "Сделка не найдена"
+		return "ой, 😀 сделка уже не отслеживается, так как она перестала быть интересной для тебя"
 	}
 	msgContent := fmt.Sprintf("%v \n", transaction.Symbol)
 	msgContent += fmt.Sprintf("📕|%v| \n", transaction.MarketFrom)

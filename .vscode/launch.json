@@ -8,7 +8,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/bot",
             "env": {
-                "CONFIGS_APP": "${workspaceFolder}/configs/debug/bot.yaml",
+                "CONFIGS_APP": "${workspaceFolder}/configs/bot.yaml",
                 "POSTGRES_DB": "crypto_pro",
                 "POSTGRES_USER": "alex",
                 "POSTGRES_PASSWORD": "655707",

@@ -19,21 +19,47 @@ type Server struct {
 	cfg         viper.Viper
 	log         logger.Logger
 	client      *http.Client
+	host        string
 	taskUseCase usecase.TaskUseCase
 }
 
 func New(cfg viper.Viper, log logger.Logger, taskUseCase usecase.TaskUseCase) Server {
+	host := cfg.GetString("endpoint.spot_local")
 	server := Server{
 		client:      &http.Client{},
+		host:        host,
 		cfg:         cfg,
 		log:         log,
 		taskUseCase: taskUseCase,
 	}
+
+	if err := server.checkLocalEndpoint(); err != nil {
+		log.Info("failed to check local endpoint", log.ErrorC(err))
+		host = cfg.GetString("endpoint.spot_remote")
+	}
+
+	server = server.setHost(host)
 	return server
 }
 
+func (s Server) setHost(host string) Server {
+	s.host = host
+	return s
+}
+
+func (s Server) checkLocalEndpoint() error {
+	url := s.cfg.GetString("endpoint.spot_local")
+	response, err := s.client.Get(url)
+	if err != nil {
+		s.log.Error("failed to get spot", s.log.ErrorC(err))
+		return err
+	}
+	defer response.Body.Close()
+	return nil
+}
+
 func (s Server) GetSpotHandler(usdt, spread float64) []entity.Transaction {
-	url := fmt.Sprintf("%s?usdt=%f&spread=%f", s.cfg.GetString("endpoint.spot"), usdt, spread)
+	url := fmt.Sprintf("%s?usdt=%f&spread=%f", s.host, usdt, spread)
 	response, err := s.client.Get(url)
 	if err != nil {
 		s.log.Error("failed to get spot", s.log.ErrorC(err))

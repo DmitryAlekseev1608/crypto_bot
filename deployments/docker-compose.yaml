@@ -6,9 +6,11 @@ services:
             context: ../
             dockerfile: build/bot/Dockerfile
         restart: always
-        depends_on:
-            - server
         environment:
-            - CONFIGS_APP=./configs/app.yaml
+            CONFIGS_APP: /app/configs/bot.yaml
+            TELEGRAM_APITOKEN: ${TELEGRAM_APITOKEN}
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
         ports:
             - 6062:6060
