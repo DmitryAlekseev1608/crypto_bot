@@ -30,7 +30,11 @@ func (b TaskUseCase) HandleRequest(requestIn string, id int64) []entity.Transact
 	for i := range transactions {
 		transactions[i].SetID(id)
 	}
-	b.dbAdapter.UpsertDWHTransactions(transactions)
+	err := b.dbAdapter.UpsertDWHTransactions(transactions)
+	if err != nil {
+		b.log.Error("Error when upserting transactions: %v", b.log.ErrorC(err))
+		return nil
+	}
 	response := make([]entity.Transaction, len(transactions))
 	for i, transaction := range transactions {
 		response[i] = entity.Transaction{
@@ -97,19 +101,19 @@ func (b TaskUseCase) GetInfoAboutTransactions(id int64, marketFrom, marketTo, sy
 	}
 	msgContent := fmt.Sprintf("%v \n", transaction.Symbol)
 	msgContent += fmt.Sprintf("📕|%v| \n", transaction.MarketFrom)
-	msgContent += fmt.Sprintf("Комиссия: %v %v \n", transaction.WithDrawFee, transaction.Symbol)
-	msgContent += fmt.Sprintf("Объем допустимый: %v %v \n", transaction.WithdrawMax,
+	msgContent += fmt.Sprintf("*Комиссия:* %v %v \n", transaction.WithDrawFee, transaction.Symbol)
+	msgContent += fmt.Sprintf("*Допустимый объем:* %v %v \n", transaction.WithdrawMax,
 		transaction.Symbol)
-	msgContent += fmt.Sprintf("Сеть: %v \n", transaction.Chain)
-	msgContent += fmt.Sprintf("Объем: %.4f %v \n", transaction.AmountCoin, transaction.Symbol)
-	msgContent += fmt.Sprintf("Кол-во ордеров: %v \n", transaction.AmountAskOrder)
-	msgContent += fmt.Sprintf("Стоимость: %.2f USDT \n", transaction.AskCost)
-	msgContent += fmt.Sprintf("Ордера (Цена/Кол-во): %v \n", transaction.AskOrder)
+	msgContent += fmt.Sprintf("*Сеть:* %v \n", transaction.Chain)
+	msgContent += fmt.Sprintf("*Объем:* %.4f %v \n", transaction.AmountCoin, transaction.Symbol)
+	msgContent += fmt.Sprintf("*Кол-во ордеров:* %v \n", transaction.AmountAskOrder)
+	msgContent += fmt.Sprintf("*Стоимость покупки:* %.2f USDT \n", transaction.AskCost)
+	msgContent += fmt.Sprintf("*Ордера (Цена/Кол-во):* %v \n", transaction.AskOrder)
 	msgContent += fmt.Sprintf("📗|%v| \n", transaction.MarketTo)
-	msgContent += fmt.Sprintf("Кол-во ордеров: %v \n", transaction.AmountBidOrder)
-	msgContent += fmt.Sprintf("Стоимость: %.2f USDT \n", transaction.BidCost)
-	msgContent += fmt.Sprintf("Ордера (Цена/Кол-во): %v \n", transaction.BidOrder)
+	msgContent += fmt.Sprintf("*Кол-во ордеров:* %v \n", transaction.AmountBidOrder)
+	msgContent += fmt.Sprintf("*Стоимость продажи:* %.2f USDT \n", transaction.BidCost)
+	msgContent += fmt.Sprintf("*Ордера (Цена/Кол-во):* %v \n", transaction.BidOrder)
 	msgContent += "--- \n"
-	msgContent += fmt.Sprintf("💰 Спред: %.2f %%", transaction.Spread)
+	msgContent += fmt.Sprintf("💰 *Спред:* %.2f %%", transaction.Spread)
 	return msgContent
 }

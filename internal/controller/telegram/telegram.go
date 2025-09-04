@@ -147,6 +147,7 @@ func (t TelegramController) sendInfo(update tgbotapi.Update) {
 	msgContent := t.taskUseCase.GetInfoAboutTransactions(callbackQuery.Message.Chat.ID, marketFrom,
 		marketTo, symbol)
 	msg := tgbotapi.NewMessage(callbackQuery.Message.Chat.ID, msgContent)
+	msg.ParseMode = "Markdown"
 	t.bot.Send(msg)
 }
 
