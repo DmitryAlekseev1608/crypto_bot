@@ -14,3 +14,5 @@ services:
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
         ports:
             - 6062:6060
+        extra_hosts:
+            - "host.docker.internal:host-gateway"

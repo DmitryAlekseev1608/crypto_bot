@@ -8,4 +8,4 @@ postgres:
 
 endpoint:
  spot_local: http://localhost:8080/spot
- spot_remote: http://spot:8080/spot
+ spot_remote: http://host.docker.internal:8080/spot
