@@ -3,5 +3,5 @@ WORKDIR /app
 COPY . /app
 RUN go mod download
 ENV CGO_ENABLED=0
-COPY ./configs/debug/bot.yaml /app/configs/bot.yaml
+COPY ./configs/bot.yaml /app/configs/bot.yaml
 CMD ["go", "run", "./cmd/bot/main.go"]
