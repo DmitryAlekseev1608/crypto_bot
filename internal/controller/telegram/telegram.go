@@ -30,6 +30,14 @@ func New(log logger.Logger, taskUseCase usecase.TaskUseCase) TelegramController 
 	}
 	bot.Debug = false
 	log.Info("Authorized on account", log.StringC("UserName", bot.Self.UserName))
+
+	_, err = bot.Request(tgbotapi.DeleteWebhookConfig{})
+	if err != nil {
+		log.Error("Failed to delete webhook (this is normal if no webhook was set)", log.ErrorC(err))
+	} else {
+		log.Info("Successfully deleted existing webhook")
+	}
+
 	updates := tgbotapi.NewUpdate(0)
 	updates.Timeout = 60
 
@@ -112,6 +120,9 @@ func (t TelegramController) sendMessage(text string, update tgbotapi.Update,
 
 func (t TelegramController) handleRequest(update tgbotapi.Update) {
 	transactions := t.taskUseCase.HandleRequest(update.Message.Text, update.Message.Chat.ID)
+	if transactions == nil {
+		return
+	}
 	buttons := []tgbotapi.InlineKeyboardButton{}
 
 	for _, transaction := range transactions {
@@ -155,4 +166,13 @@ func (t TelegramController) getKeyFromUpdate(update *tgbotapi.CallbackQuery) (st
 	string) {
 	parts := strings.Split(update.Data, "/")
 	return parts[0], parts[1], parts[2]
+}
+
+func (t TelegramController) DeleteWebhook() error {
+	_, err := t.bot.Request(tgbotapi.DeleteWebhookConfig{})
+	if err != nil {
+		return err
+	}
+	t.log.Info("Webhook successfully deleted")
+	return nil
 }

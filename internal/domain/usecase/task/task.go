@@ -30,6 +30,11 @@ func (b TaskUseCase) HandleRequest(requestIn string, id int64) []entity.Transact
 	for i := range transactions {
 		transactions[i].SetID(id)
 	}
+
+	if len(transactions) == 0 {
+		return nil
+	}
+
 	err := b.dbAdapter.UpsertDWHTransactions(transactions)
 	if err != nil {
 		b.log.Error("Error when upserting transactions: %v", b.log.ErrorC(err))
@@ -81,15 +86,17 @@ func (b TaskUseCase) GetTransactions(id int64) []entity.Transaction {
 }
 
 func (b TaskUseCase) GetInstruction() string {
-	return `
-	Привет! Я чат-бот для биржевой аналитики CryptoPro. Моя основная задача помогать находить
-	наиболее выгодные биржевые транзакции для спотовых продаж. Я постоянно развиваюсь. На текущий
-	момент я умею работать только с биржами BYBIT и KUKOIN. Просто введи сумму необходимого 
-	количества USDT (целое) и spread (до одного знака после запятой) в % через пробел
-	(пример 100 0.3), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования
-	бирж отправь s в чат и смотри последнее полученное сообщение, нажми на интересующую сделку и
-	получишь всю необходимую информацию по ней.
-	`
+	return `Привет! Я чат-бот для биржевой аналитики CryptoPro.	Моя основная задача помогать находить наиболее выгодные биржевые транзакции. Я постоянно развиваюсь. На текущий момент я умею работать с биржами:
+	- ASCENDEX;
+	- BINGX;
+	- BITGET;
+	- BITMART;
+	- BYBIT;
+	- HTX;
+	- KUKOIN;
+	- MEXC;
+	- XT.
+	Просто введи сумму необходимого количества USDT (целое) и spread (до одного знака после запятой) в % через пробел пример 100 0.3), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования бирж отправь s в чат и смотри последнее полученное сообщение, нажми на интересующую сделку и получишь всю необходимую информацию по ней.`
 }
 
 func (b TaskUseCase) GetInfoAboutTransactions(id int64, marketFrom, marketTo, symbol string,
