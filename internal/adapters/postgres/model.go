@@ -98,13 +98,3 @@ func fromEntityToModel(transactionsEntity []entity.Transaction) (transactions, e
 
 	return transactions, nil
 }
-
-type session struct {
-	ID     string  `db:"id"`
-	USDT   float64 `db:"usdt"`
-	Spread float64 `db:"spread"`
-}
-
-func (s session) toEntity() entity.Session {
-	return entity.Session{ID: s.ID, USDT: s.USDT, Spread: s.Spread}
-}
