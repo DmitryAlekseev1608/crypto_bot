@@ -7,9 +7,10 @@ import (
 type DbAdapter interface {
 	Close()
 	UpsertDWHTransactions(transactions []entity.Transaction) error
-	SelectTransactions(id int64) []entity.Transaction
-	DeleteSession(id int64)
+	SelectTransactions(id string) []entity.Transaction
+	DeleteSession(id string)
 	TrancateRawTransactions()
 	TrancateDwhTransactions()
-	SelectTransactionsBySymbol(id int64, symbol, marketFrom, marketTo string) entity.Transaction
+	SelectTransactionsBySymbol(id string, symbol, marketFrom, marketTo string) entity.Transaction
+	SelectNewTransactions(id string) []entity.Transaction
 }

@@ -206,7 +206,7 @@ func (d *PostresRepository) UpsertDWHTransactions(transactionsEntity []entity.Tr
 
 	deleteQuery = fmt.Sprintf(`
 		DELETE FROM raw_transactions
-		WHERE id = %d
+		WHERE id = '%s'
 	`, transactionsModel[0].ID)
 
 	if err := tx.Exec(deleteQuery).Error; err != nil {
@@ -216,7 +216,7 @@ func (d *PostresRepository) UpsertDWHTransactions(transactionsEntity []entity.Tr
 	return tx.Commit().Error
 }
 
-func (d *PostresRepository) SelectTransactions(id int64) []entity.Transaction {
+func (d *PostresRepository) SelectTransactions(id string) []entity.Transaction {
 	var transactions transactions
 
 	tx := d.client.Begin()
@@ -245,7 +245,7 @@ func (d *PostresRepository) SelectTransactions(id int64) []entity.Transaction {
 			bid_order,
 			updated_at
 		FROM dwh_transactions
-		WHERE id = ?`, id).Scan(&transactions).Error; err != nil {
+		WHERE id = $1`, id).Scan(&transactions).Error; err != nil {
 		d.log.Error("error select transactions", d.log.ErrorC(err))
 		return nil
 	}
@@ -271,10 +271,10 @@ func (d *PostresRepository) TrancateDwhTransactions() {
 	}
 }
 
-func (d *PostresRepository) DeleteSession(id int64) {
+func (d *PostresRepository) DeleteSession(id string) {
 	deleteQuery := fmt.Sprintf(`
 		DELETE FROM dwh_transactions
-		WHERE id = %d
+		WHERE id = '%s'
 	`, id)
 
 	if err := d.client.Exec(deleteQuery).Error; err != nil {
@@ -282,7 +282,7 @@ func (d *PostresRepository) DeleteSession(id int64) {
 	}
 }
 
-func (d *PostresRepository) SelectTransactionsBySymbol(id int64, symbol, marketFrom,
+func (d *PostresRepository) SelectTransactionsBySymbol(id string, symbol, marketFrom,
 	marketTo string) entity.Transaction {
 
 	var transaction transaction
@@ -297,4 +297,56 @@ func (d *PostresRepository) SelectTransactionsBySymbol(id int64, symbol, marketF
 		return entity.Transaction{}
 	}
 	return transactions.toEntity()[0]
+}
+
+func (d *PostresRepository) SelectNewTransactions(id string) []entity.Transaction {
+	var transactions transactions
+
+	tx := d.client.Begin()
+	if tx.Error != nil {
+		d.log.Error("error begin transaction", d.log.ErrorC(tx.Error))
+		return nil
+	}
+	defer tx.Rollback()
+
+	if err := tx.Raw(`
+		SELECT
+			id,
+			symbol,
+			chain,
+			market_from,
+			market_to,
+			spread,
+			with_draw_fee,
+			withdraw_max,
+			amount_coin,
+			amount_ask_order,
+			ask_cost,
+			ask_order,
+			amount_bid_order,
+			bid_cost,
+			bid_order,
+			updated_at
+		FROM dwh_transactions
+		WHERE id = $1 AND is_posted = false`, id).Scan(&transactions).Error; err != nil {
+		d.log.Error("error select transactions", d.log.ErrorC(err))
+		return nil
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		d.log.Error("error commit transaction", d.log.ErrorC(err))
+		return nil
+	}
+
+	d.updateTransactionIsPosted(id)
+
+	return transactions.toEntity()
+}
+
+func (d *PostresRepository) updateTransactionIsPosted(id string) error {
+	if err := d.client.Exec("UPDATE dwh_transactions SET is_posted = true WHERE id = ?", id).Error; err != nil {
+		d.log.Error("error update transactions", d.log.ErrorC(err))
+		return err
+	}
+	return nil
 }

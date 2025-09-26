@@ -24,7 +24,7 @@ func New(log logger.Logger, serverController controller.Server, dbAdapter adapte
 	return TaskUseCase{log: log, serverController: serverController, dbAdapter: dbAdapter}
 }
 
-func (b TaskUseCase) HandleRequest(requestIn string, id int64) []entity.Transaction {
+func (b TaskUseCase) HandleRequest(requestIn string, id string) []entity.Transaction {
 	usdt, spread := b.getDataIn(requestIn)
 	transactions := b.serverController.GetSpotHandler(usdt, spread)
 	for i := range transactions {
@@ -40,18 +40,21 @@ func (b TaskUseCase) HandleRequest(requestIn string, id int64) []entity.Transact
 		b.log.Error("Error when upserting transactions: %v", b.log.ErrorC(err))
 		return nil
 	}
-	response := make([]entity.Transaction, len(transactions))
-	for i, transaction := range transactions {
-		response[i] = entity.Transaction{
-			Symbol:     transaction.Symbol,
-			AmountCoin: transaction.AmountCoin,
-			Spread:     transaction.Spread,
-			MarketFrom: transaction.MarketFrom,
-			MarketTo:   transaction.MarketTo,
-			ID:         transaction.ID,
-		}
+
+	newTransactions := b.dbAdapter.SelectNewTransactions(id)
+	if newTransactions == nil {
+		return []entity.Transaction{}
 	}
-	return response
+
+	return newTransactions
+}
+
+func (b TaskUseCase) GetAllTransactions(id string) []entity.Transaction {
+	transactions := b.dbAdapter.SelectTransactions(id)
+	if transactions == nil {
+		return []entity.Transaction{}
+	}
+	return transactions
 }
 
 func (b TaskUseCase) getDataIn(input string) (float64, float64) {
@@ -69,7 +72,7 @@ func (b TaskUseCase) getDataIn(input string) (float64, float64) {
 	return usdt, spread
 }
 
-func (b TaskUseCase) DeleteSession(id int64) {
+func (b TaskUseCase) DeleteSession(id string) {
 	b.dbAdapter.DeleteSession(id)
 }
 
@@ -81,7 +84,7 @@ func (b TaskUseCase) TrancateDwhTransactions() {
 	b.dbAdapter.TrancateDwhTransactions()
 }
 
-func (b TaskUseCase) GetTransactions(id int64) []entity.Transaction {
+func (b TaskUseCase) GetTransactions(id string) []entity.Transaction {
 	return b.dbAdapter.SelectTransactions(id)
 }
 
@@ -96,21 +99,19 @@ func (b TaskUseCase) GetInstruction() string {
 	- KUKOIN;
 	- MEXC;
 	- XT.
-	Просто введи сумму необходимого количества USDT (целое) и spread (до одного знака после запятой) в % через пробел пример 100 0.3), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования бирж отправь s в чат и смотри последнее полученное сообщение, нажми на интересующую сделку и получишь всю необходимую информацию по ней.`
+Просто введи сумму необходимого количества USDT (целое) и spread (до одного знака после запятой) в % через пробел пример 100 0.3), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования бирж отправь stop в чат, нажми на интересующую сделку и получишь всю необходимую информацию по ней или отправь all, чтобы получить все транзакции сразу.`
 }
 
-func (b TaskUseCase) GetInfoAboutTransactions(id int64, marketFrom, marketTo, symbol string,
+func (b TaskUseCase) GetInfoAboutTransactions(id string, marketFrom, marketTo, symbol string,
 ) string {
 
 	transaction := b.dbAdapter.SelectTransactionsBySymbol(id, symbol, marketFrom, marketTo)
-	if transaction.ID == 0 {
+	if transaction.ID == "" {
 		return "ой, 😀 сделка уже не отслеживается, так как она перестала быть интересной для тебя"
 	}
 	msgContent := fmt.Sprintf("%v \n", transaction.Symbol)
 	msgContent += fmt.Sprintf("📕|%v| \n", transaction.MarketFrom)
 	msgContent += fmt.Sprintf("*Комиссия:* %v %v \n", transaction.WithDrawFee, transaction.Symbol)
-	msgContent += fmt.Sprintf("*Допустимый объем:* %v %v \n", transaction.WithdrawMax,
-		transaction.Symbol)
 	msgContent += fmt.Sprintf("*Сеть:* %v \n", transaction.Chain)
 	msgContent += fmt.Sprintf("*Объем:* %.4f %v \n", transaction.AmountCoin, transaction.Symbol)
 	msgContent += fmt.Sprintf("*Кол-во ордеров:* %v \n", transaction.AmountAskOrder)

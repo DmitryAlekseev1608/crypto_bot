@@ -9,7 +9,7 @@ import (
 type transactions []transaction
 
 type transaction struct {
-	ID             int64           `db:"id"`
+	ID             string          `db:"id"`
 	Symbol         string          `db:"symbol"`
 	Chain          string          `db:"chain"`
 	MarketFrom     string          `db:"market_from"`
@@ -24,6 +24,7 @@ type transaction struct {
 	AmountBidOrder float64         `db:"amount_bid_order"`
 	BidCost        float64         `db:"bid_cost"`
 	BidOrder       json.RawMessage `db:"bid_order"`
+	IsPosted       bool            `db:"is_posted"`
 	UpdatedAt      time.Time       `db:"updated_at"`
 }
 

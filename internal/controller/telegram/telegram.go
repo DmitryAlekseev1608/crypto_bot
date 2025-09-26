@@ -3,11 +3,13 @@ package telegram
 import (
 	"context"
 	"crypto_pro/internal/controller"
+	"crypto_pro/internal/domain/entity"
 	"crypto_pro/internal/domain/usecase"
 	"crypto_pro/pkg/logger"
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,17 +89,25 @@ func (t TelegramController) Run(ctx context.Context) {
 						}
 					}
 				}()
-				t.sendMessage("Сессия начата. Отправьте 's' для отмены.", update, keyboard)
+				t.sendMessage("Сессия начата. Отправьте 'stop' для отмены.", update, keyboard)
 
-			case update.Message.Text == "s":
+			case update.Message.Text == "stop":
 				if clientUpdate, exists := activeSessions[update.Message.Chat.ID]; exists {
 					clientUpdate.cancelF()
 					delete(activeSessions, update.Message.Chat.ID)
-					t.taskUseCase.DeleteSession(update.Message.Chat.ID)
+					t.taskUseCase.DeleteSession(strconv.Itoa(int(update.Message.Chat.ID)))
 					t.sendMessage("Сессия отменена.", update, keyboard)
 				} else {
 					t.sendMessage("Нет активной сессии.", update, keyboard)
 				}
+
+			case update.Message.Text == "all":
+				transactions := t.taskUseCase.GetAllTransactions(strconv.Itoa(int(update.Message.Chat.ID)))
+				if len(transactions) == 0 {
+					t.sendMessage("Нет транзакций.", update, keyboard)
+					continue
+				}
+				t.sendAllButtons(transactions, update)
 
 			default:
 				t.sendMessage(`Такого действия ботом не предусмотрено или что-то было введено не
@@ -119,10 +129,14 @@ func (t TelegramController) sendMessage(text string, update tgbotapi.Update,
 }
 
 func (t TelegramController) handleRequest(update tgbotapi.Update) {
-	transactions := t.taskUseCase.HandleRequest(update.Message.Text, update.Message.Chat.ID)
+	transactions := t.taskUseCase.HandleRequest(update.Message.Text, strconv.Itoa(int(update.Message.Chat.ID)))
 	if transactions == nil {
 		return
 	}
+	t.sendAllButtons(transactions, update)
+}
+
+func (t TelegramController) sendAllButtons(transactions []entity.Transaction, update tgbotapi.Update) {
 	buttons := []tgbotapi.InlineKeyboardButton{}
 
 	for _, transaction := range transactions {
@@ -155,7 +169,7 @@ func (t TelegramController) sendInfo(update tgbotapi.Update) {
 	callbackQuery := update.CallbackQuery
 	t.log.Info("User pressed button", t.log.StringC("Data", callbackQuery.Data))
 	marketFrom, marketTo, symbol := t.getKeyFromUpdate(callbackQuery)
-	msgContent := t.taskUseCase.GetInfoAboutTransactions(callbackQuery.Message.Chat.ID, marketFrom,
+	msgContent := t.taskUseCase.GetInfoAboutTransactions(strconv.Itoa(int(callbackQuery.Message.Chat.ID)), marketFrom,
 		marketTo, symbol)
 	msg := tgbotapi.NewMessage(callbackQuery.Message.Chat.ID, msgContent)
 	msg.ParseMode = "Markdown"
