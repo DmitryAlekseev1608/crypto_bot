@@ -6,6 +6,6 @@ import (
 )
 
 type clientUpdate struct {
-	cancelF context.CancelFunc
-	time    time.Time
+	cancelFunc context.CancelFunc
+	time       time.Time
 }

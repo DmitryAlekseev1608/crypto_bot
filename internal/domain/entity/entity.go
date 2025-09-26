@@ -30,3 +30,9 @@ type Order struct {
 func (t *Transaction) SetID(id string) {
 	t.ID = id
 }
+
+type Session struct {
+	ID     string
+	USDT   float64
+	Spread float64
+}

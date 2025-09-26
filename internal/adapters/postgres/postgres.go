@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -273,7 +274,7 @@ func (d *PostresRepository) TrancateDwhTransactions() {
 
 func (d *PostresRepository) DeleteSession(id string) {
 	deleteQuery := fmt.Sprintf(`
-		DELETE FROM dwh_transactions
+		DELETE FROM dwh_sessions
 		WHERE id = '%s'
 	`, id)
 
@@ -349,4 +350,12 @@ func (d *PostresRepository) updateTransactionIsPosted(id string) error {
 		return err
 	}
 	return nil
+}
+
+func (d *PostresRepository) CreateSession(id string, usdt, spread float64) {
+	if err := d.client.Exec("INSERT INTO dwh_sessions (id, usdt, spread) VALUES (?, ?, ?)", id,
+		strconv.FormatFloat(usdt, 'f', -1, 64), strconv.FormatFloat(spread, 'f', -1, 64)).Error; err != nil {
+
+		d.log.Error("error create session", d.log.ErrorC(err))
+	}
 }

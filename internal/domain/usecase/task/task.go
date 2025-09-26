@@ -24,7 +24,7 @@ func New(log logger.Logger, serverController controller.Server, dbAdapter adapte
 	return TaskUseCase{log: log, serverController: serverController, dbAdapter: dbAdapter}
 }
 
-func (b TaskUseCase) HandleRequest(requestIn string, id string) []entity.Transaction {
+func (b TaskUseCase) HandleRequest(requestIn, id string) []entity.Transaction {
 	usdt, spread := b.getDataIn(requestIn)
 	transactions := b.serverController.GetSpotHandler(usdt, spread)
 	for i := range transactions {
@@ -124,4 +124,9 @@ func (b TaskUseCase) GetInfoAboutTransactions(id string, marketFrom, marketTo, s
 	msgContent += "--- \n"
 	msgContent += fmt.Sprintf("💰 *Спред:* %.2f %%", transaction.Spread)
 	return msgContent
+}
+
+func (b TaskUseCase) CreateSession(id, requestIn string) {
+	usdt, spread := b.getDataIn(requestIn)
+	b.dbAdapter.CreateSession(id, usdt, spread)
 }

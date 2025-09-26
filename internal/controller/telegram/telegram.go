@@ -48,6 +48,7 @@ func New(log logger.Logger, taskUseCase usecase.TaskUseCase) TelegramController 
 
 func (t TelegramController) Run(ctx context.Context) {
 	var activeSessions = make(map[int64]clientUpdate)
+
 	updates := t.bot.GetUpdatesChan(t.updates)
 	keyboard := tgbotapi.NewReplyKeyboard(tgbotapi.NewKeyboardButtonRow(
 		tgbotapi.NewKeyboardButton("Инструкция")))
@@ -71,11 +72,16 @@ func (t TelegramController) Run(ctx context.Context) {
 					t.sendMessage("Сессия активна", update, keyboard)
 					continue
 				}
-				ctx, cancel := context.WithCancel(context.Background())
-				activeSessions[update.Message.Chat.ID] = clientUpdate{cancelF: cancel,
-					time: time.Now()}
+
+				t.taskUseCase.CreateSession(strconv.Itoa(int(update.Message.Chat.ID)), update.Message.Text)
+				ctx, cancelFunc := context.WithCancel(context.Background())
+				activeSessions[update.Message.Chat.ID] = clientUpdate{
+					cancelFunc: cancelFunc,
+					time:       time.Now(),
+				}
+
+				semathore <- struct{}{}
 				go func() {
-					semathore <- struct{}{}
 					defer func() { <-semathore }()
 					ticker := time.NewTicker(time.Second * 120)
 					for timeT := time.Now(); ; timeT = <-ticker.C {
@@ -93,7 +99,7 @@ func (t TelegramController) Run(ctx context.Context) {
 
 			case update.Message.Text == "stop":
 				if clientUpdate, exists := activeSessions[update.Message.Chat.ID]; exists {
-					clientUpdate.cancelF()
+					clientUpdate.cancelFunc()
 					delete(activeSessions, update.Message.Chat.ID)
 					t.taskUseCase.DeleteSession(strconv.Itoa(int(update.Message.Chat.ID)))
 					t.sendMessage("Сессия отменена.", update, keyboard)
@@ -140,8 +146,8 @@ func (t TelegramController) sendAllButtons(transactions []entity.Transaction, up
 	buttons := []tgbotapi.InlineKeyboardButton{}
 
 	for _, transaction := range transactions {
-		textOnButton := fmt.Sprintf("%v: %.2f (%.2f%%) 🟢", transaction.Symbol,
-			transaction.AmountCoin, transaction.Spread)
+		textOnButton := fmt.Sprintf("🟢 %v: %.2f (%.2f%%) 📕 %s -> 📗 %s", transaction.Symbol,
+			transaction.AmountCoin, transaction.Spread, transaction.MarketFrom, transaction.MarketTo)
 		keyMsg := transaction.MarketFrom + "/" + transaction.MarketTo + "/" + transaction.Symbol
 		button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
 		buttons = append(buttons, button)
