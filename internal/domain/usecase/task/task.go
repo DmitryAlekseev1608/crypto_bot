@@ -135,7 +135,3 @@ func (b TaskUseCase) CreateSession(id, requestIn string) {
 	usdt, spreadMin, spreadMax := b.getDataIn(requestIn)
 	b.dbAdapter.CreateSession(id, usdt, spreadMin, spreadMax)
 }
-
-func (b TaskUseCase) SelectActiveSession(id string) bool {
-	return b.dbAdapter.SelectActiveSession(id)
-}
