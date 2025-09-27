@@ -360,13 +360,3 @@ func (d *PostresRepository) CreateSession(id string, usdt, spreadMin, spreadMax 
 		d.log.Error("error create session", d.log.ErrorC(err))
 	}
 }
-
-func (d *PostresRepository) SelectActiveSession(id string) bool {
-	var exists bool
-	if err := d.client.Raw("SELECT EXISTS(SELECT 1 FROM dwh_sessions WHERE id = ?)", id).Scan(&exists).Error; err != nil {
-
-		d.log.Error("error select session", d.log.ErrorC(err))
-		return false
-	}
-	return exists
-}

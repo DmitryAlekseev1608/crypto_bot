@@ -14,5 +14,4 @@ type DbAdapter interface {
 	SelectTransactionsBySymbol(id string, symbol, marketFrom, marketTo string) entity.Transaction
 	SelectNewTransactions(id string) []entity.Transaction
 	CreateSession(id string, usdt, spreadMin, spreadMax float64)
-	SelectActiveSession(id string) bool
 }
