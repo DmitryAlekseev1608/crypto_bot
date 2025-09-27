@@ -43,20 +43,22 @@ func New(log logger.Logger, taskUseCase usecase.TaskUseCase) TelegramController 
 	updates := tgbotapi.NewUpdate(0)
 	updates.Timeout = 60
 
-	return TelegramController{log: log, bot: bot, taskUseCase: taskUseCase, updates: updates}
+	telegram := TelegramController{log: log, bot: bot, taskUseCase: taskUseCase, updates: updates}
+	telegram.taskUseCase.TrancateRawTransactions()
+	telegram.taskUseCase.TrancateDwhTransactions()
+
+	return telegram
 }
 
 func (t TelegramController) Run(ctx context.Context) {
-	var activeSessions = make(map[int64]clientUpdate)
+	var cancelFunc *context.CancelFunc
 
 	updates := t.bot.GetUpdatesChan(t.updates)
 	keyboard := tgbotapi.NewReplyKeyboard(tgbotapi.NewKeyboardButtonRow(
 		tgbotapi.NewKeyboardButton("Инструкция")))
-	re := regexp.MustCompile(`^\d+\s\d+(\.\d+)?$`)
+	re := regexp.MustCompile(`^\d+\s\d+(\.\d+)?\s\d+(\.\d+)?$`)
 	semathore := make(chan struct{}, 30)
 	defer close(semathore)
-	t.taskUseCase.TrancateRawTransactions()
-	t.taskUseCase.TrancateDwhTransactions()
 
 	for update := range updates {
 		if update.Message != nil {
@@ -68,17 +70,14 @@ func (t TelegramController) Run(ctx context.Context) {
 			case update.Message.Text == "Инструкция":
 				t.sendMessage(t.taskUseCase.GetInstruction(), update, keyboard)
 			case re.MatchString(update.Message.Text):
-				if _, exists := activeSessions[update.Message.Chat.ID]; exists {
+				if t.taskUseCase.SelectActiveSession(strconv.Itoa(int(update.Message.Chat.ID))) {
 					t.sendMessage("Сессия активна", update, keyboard)
 					continue
 				}
 
 				t.taskUseCase.CreateSession(strconv.Itoa(int(update.Message.Chat.ID)), update.Message.Text)
-				ctx, cancelFunc := context.WithCancel(context.Background())
-				activeSessions[update.Message.Chat.ID] = clientUpdate{
-					cancelFunc: cancelFunc,
-					time:       time.Now(),
-				}
+				ctx, cancel := context.WithCancel(context.Background())
+				cancelFunc = &cancel
 
 				semathore <- struct{}{}
 				go func() {
@@ -98,9 +97,10 @@ func (t TelegramController) Run(ctx context.Context) {
 				t.sendMessage("Сессия начата. Отправьте 'stop' для отмены.", update, keyboard)
 
 			case update.Message.Text == "stop":
-				if clientUpdate, exists := activeSessions[update.Message.Chat.ID]; exists {
-					clientUpdate.cancelFunc()
-					delete(activeSessions, update.Message.Chat.ID)
+				if t.taskUseCase.SelectActiveSession(strconv.Itoa(int(update.Message.Chat.ID))) {
+					if cancelFunc != nil {
+						(*cancelFunc)()
+					}
 					t.taskUseCase.DeleteSession(strconv.Itoa(int(update.Message.Chat.ID)))
 					t.sendMessage("Сессия отменена.", update, keyboard)
 				} else {
@@ -116,8 +116,8 @@ func (t TelegramController) Run(ctx context.Context) {
 				t.sendAllButtons(transactions, update)
 
 			default:
-				t.sendMessage(`Такого действия ботом не предусмотрено или что-то было введено не
-					верно`, update, keyboard)
+				t.sendMessage(`Такого действия ботом не предусмотрено или что-то было введено не верно`, update,
+					keyboard)
 			}
 
 		} else if update.CallbackQuery != nil {
@@ -146,8 +146,8 @@ func (t TelegramController) sendAllButtons(transactions []entity.Transaction, up
 	buttons := []tgbotapi.InlineKeyboardButton{}
 
 	for _, transaction := range transactions {
-		textOnButton := fmt.Sprintf("🟢 %v: %.2f (%.2f%%) 📕 %s -> 📗 %s", transaction.Symbol,
-			transaction.AmountCoin, transaction.Spread, transaction.MarketFrom, transaction.MarketTo)
+		textOnButton := fmt.Sprintf("🟢 %v: %.2f (%.2f%%)", transaction.Symbol, transaction.AmountCoin,
+			transaction.Spread)
 		keyMsg := transaction.MarketFrom + "/" + transaction.MarketTo + "/" + transaction.Symbol
 		button := tgbotapi.NewInlineKeyboardButtonData(textOnButton, keyMsg)
 		buttons = append(buttons, button)
@@ -162,11 +162,16 @@ func (t TelegramController) createInlineKeyboard(buttons []tgbotapi.InlineKeyboa
 ) tgbotapi.InlineKeyboardMarkup {
 
 	var rows [][]tgbotapi.InlineKeyboardButton
-	var row []tgbotapi.InlineKeyboardButton
-	for _, button := range buttons {
-		row = append(row, button)
+
+	for i := 0; i < len(buttons); i += 2 {
+		var row []tgbotapi.InlineKeyboardButton
+		row = append(row, buttons[i])
+
+		if i+1 < len(buttons) {
+			row = append(row, buttons[i+1])
+		}
+
 		rows = append(rows, row)
-		row = nil
 	}
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

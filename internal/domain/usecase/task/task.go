@@ -25,8 +25,8 @@ func New(log logger.Logger, serverController controller.Server, dbAdapter adapte
 }
 
 func (b TaskUseCase) HandleRequest(requestIn, id string) []entity.Transaction {
-	usdt, spread := b.getDataIn(requestIn)
-	transactions := b.serverController.GetSpotHandler(usdt, spread)
+	usdt, spreadMin, spreadMax := b.getDataIn(requestIn)
+	transactions := b.serverController.GetSpotHandler(usdt, spreadMin, spreadMax)
 	for i := range transactions {
 		transactions[i].SetID(id)
 	}
@@ -57,19 +57,24 @@ func (b TaskUseCase) GetAllTransactions(id string) []entity.Transaction {
 	return transactions
 }
 
-func (b TaskUseCase) getDataIn(input string) (float64, float64) {
+func (b TaskUseCase) getDataIn(input string) (float64, float64, float64) {
 	parts := strings.Split(input, " ")
 	usdt, err := strconv.ParseFloat(parts[0], 64)
 	if err != nil {
-		b.log.Error("Error when transforming '%s': %v", b.log.ErrorC(err), b.log.StringC("input",
+		b.log.Error("Error when transforming usdt '%s': %v", b.log.ErrorC(err), b.log.StringC("input",
 			input))
 	}
-	spread, err := strconv.ParseFloat(parts[1], 64)
+	spreadMin, err := strconv.ParseFloat(parts[1], 64)
 	if err != nil {
-		b.log.Error("Error when transforming '%s': %v", b.log.ErrorC(err), b.log.StringC("input",
+		b.log.Error("Error when transforming spreadMin '%s': %v", b.log.ErrorC(err), b.log.StringC("input",
 			input))
 	}
-	return usdt, spread
+	spreadMax, err := strconv.ParseFloat(parts[2], 64)
+	if err != nil {
+		b.log.Error("Error when transforming spreadMax '%s': %v", b.log.ErrorC(err), b.log.StringC("input",
+			input))
+	}
+	return usdt, spreadMin, spreadMax
 }
 
 func (b TaskUseCase) DeleteSession(id string) {
@@ -99,7 +104,7 @@ func (b TaskUseCase) GetInstruction() string {
 	- KUKOIN;
 	- MEXC;
 	- XT.
-Просто введи сумму необходимого количества USDT (целое) и spread (до одного знака после запятой) в % через пробел пример 100 0.3), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования бирж отправь stop в чат, нажми на интересующую сделку и получишь всю необходимую информацию по ней или отправь all, чтобы получить все транзакции сразу.`
+Просто введи сумму необходимого количества USDT (целое), spread_min, spread_max (до одного знака после запятой) в % через пробел пример 100 0.3 0.5), чтобы я мог искать для тебя транзакции. Для остановки режима сканирования бирж отправь stop в чат, нажми на интересующую сделку и получишь всю необходимую информацию по ней или отправь all, чтобы получить все транзакции сразу.`
 }
 
 func (b TaskUseCase) GetInfoAboutTransactions(id string, marketFrom, marketTo, symbol string,
@@ -111,11 +116,11 @@ func (b TaskUseCase) GetInfoAboutTransactions(id string, marketFrom, marketTo, s
 	}
 	msgContent := fmt.Sprintf("%v \n", transaction.Symbol)
 	msgContent += fmt.Sprintf("📕|%v| \n", transaction.MarketFrom)
-	msgContent += fmt.Sprintf("*Комиссия:* %v %v \n", transaction.WithDrawFee, transaction.Symbol)
 	msgContent += fmt.Sprintf("*Сеть:* %v \n", transaction.Chain)
-	msgContent += fmt.Sprintf("*Объем:* %.4f %v \n", transaction.AmountCoin, transaction.Symbol)
+	msgContent += fmt.Sprintf("*Объем б/к:* %.4f %v \n", transaction.AmountCoin, transaction.Symbol)
+	msgContent += fmt.Sprintf("*Комиссия:* %v %v \n", transaction.WithDrawFee, transaction.Symbol)
 	msgContent += fmt.Sprintf("*Кол-во ордеров:* %v \n", transaction.AmountAskOrder)
-	msgContent += fmt.Sprintf("*Стоимость покупки:* %.2f USDT \n", transaction.AskCost)
+	msgContent += fmt.Sprintf("*Стоимость покупки:* %.0f USDT \n", transaction.AskCost)
 	msgContent += fmt.Sprintf("*Ордера (Цена/Кол-во):* %v \n", transaction.AskOrder)
 	msgContent += fmt.Sprintf("📗|%v| \n", transaction.MarketTo)
 	msgContent += fmt.Sprintf("*Кол-во ордеров:* %v \n", transaction.AmountBidOrder)
@@ -127,6 +132,10 @@ func (b TaskUseCase) GetInfoAboutTransactions(id string, marketFrom, marketTo, s
 }
 
 func (b TaskUseCase) CreateSession(id, requestIn string) {
-	usdt, spread := b.getDataIn(requestIn)
-	b.dbAdapter.CreateSession(id, usdt, spread)
+	usdt, spreadMin, spreadMax := b.getDataIn(requestIn)
+	b.dbAdapter.CreateSession(id, usdt, spreadMin, spreadMax)
+}
+
+func (b TaskUseCase) SelectActiveSession(id string) bool {
+	return b.dbAdapter.SelectActiveSession(id)
 }

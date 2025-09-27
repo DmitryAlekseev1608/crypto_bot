@@ -58,8 +58,8 @@ func (s Server) checkLocalEndpoint() error {
 	return nil
 }
 
-func (s Server) GetSpotHandler(usdt, spread float64) []entity.Transaction {
-	url := fmt.Sprintf("%s?usdt=%f&spread=%f", s.host, usdt, spread)
+func (s Server) GetSpotHandler(usdt, spreadMin, spreadMax float64) []entity.Transaction {
+	url := fmt.Sprintf("%s?usdt=%f&spread_min=%f&spread_max=%f", s.host, usdt, spreadMin, spreadMax)
 	response, err := s.client.Get(url)
 	if err != nil {
 		s.log.Error("failed to get spot", s.log.ErrorC(err))

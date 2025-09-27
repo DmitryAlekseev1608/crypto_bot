@@ -352,10 +352,21 @@ func (d *PostresRepository) updateTransactionIsPosted(id string) error {
 	return nil
 }
 
-func (d *PostresRepository) CreateSession(id string, usdt, spread float64) {
-	if err := d.client.Exec("INSERT INTO dwh_sessions (id, usdt, spread) VALUES (?, ?, ?)", id,
-		strconv.FormatFloat(usdt, 'f', -1, 64), strconv.FormatFloat(spread, 'f', -1, 64)).Error; err != nil {
+func (d *PostresRepository) CreateSession(id string, usdt, spreadMin, spreadMax float64) {
+	if err := d.client.Exec("INSERT INTO dwh_sessions (id, usdt, spread_min, spread_max) VALUES (?, ?, ?, ?)", id,
+		strconv.FormatFloat(usdt, 'f', -1, 64), strconv.FormatFloat(spreadMin, 'f', -1, 64),
+		strconv.FormatFloat(spreadMax, 'f', -1, 64)).Error; err != nil {
 
 		d.log.Error("error create session", d.log.ErrorC(err))
 	}
+}
+
+func (d *PostresRepository) SelectActiveSession(id string) bool {
+	var exists bool
+	if err := d.client.Raw("SELECT EXISTS(SELECT 1 FROM dwh_sessions WHERE id = ?)", id).Scan(&exists).Error; err != nil {
+
+		d.log.Error("error select session", d.log.ErrorC(err))
+		return false
+	}
+	return exists
 }

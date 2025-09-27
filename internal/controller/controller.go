@@ -9,7 +9,7 @@ type MarkerController interface {
 }
 
 type Server interface {
-	GetSpotHandler(usdt, spread float64) []entity.Transaction
+	GetSpotHandler(usdt, spreadMin, spreadMax float64) []entity.Transaction
 }
 
 type TelegramController interface {

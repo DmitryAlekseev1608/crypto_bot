@@ -14,4 +14,5 @@ type TaskUseCase interface {
 	GetInstruction() string
 	GetAllTransactions(id string) []entity.Transaction
 	CreateSession(id, requestIn string)
+	SelectActiveSession(id string) bool
 }
