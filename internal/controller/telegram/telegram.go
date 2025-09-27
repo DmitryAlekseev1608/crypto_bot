@@ -51,7 +51,7 @@ func New(log logger.Logger, taskUseCase usecase.TaskUseCase) TelegramController 
 }
 
 func (t TelegramController) Run(ctx context.Context) {
-	var cancelFunc *context.CancelFunc
+	var activeSessions = make(map[int64]clientUpdate)
 
 	updates := t.bot.GetUpdatesChan(t.updates)
 	keyboard := tgbotapi.NewReplyKeyboard(tgbotapi.NewKeyboardButtonRow(
@@ -70,17 +70,20 @@ func (t TelegramController) Run(ctx context.Context) {
 			case update.Message.Text == "Инструкция":
 				t.sendMessage(t.taskUseCase.GetInstruction(), update, keyboard)
 			case re.MatchString(update.Message.Text):
-				if t.taskUseCase.SelectActiveSession(strconv.Itoa(int(update.Message.Chat.ID))) {
+				if _, exists := activeSessions[update.Message.Chat.ID]; exists {
 					t.sendMessage("Сессия активна", update, keyboard)
 					continue
 				}
 
 				t.taskUseCase.CreateSession(strconv.Itoa(int(update.Message.Chat.ID)), update.Message.Text)
-				ctx, cancel := context.WithCancel(context.Background())
-				cancelFunc = &cancel
+				ctx, cancelFunc := context.WithCancel(context.Background())
+				activeSessions[update.Message.Chat.ID] = clientUpdate{
+					cancelFunc: cancelFunc,
+					time:       time.Now(),
+				}
 
 				semathore <- struct{}{}
-				go func() {
+				go func(ctx context.Context) {
 					defer func() { <-semathore }()
 					ticker := time.NewTicker(time.Second * 120)
 					for timeT := time.Now(); ; timeT = <-ticker.C {
@@ -93,14 +96,13 @@ func (t TelegramController) Run(ctx context.Context) {
 							t.handleRequest(update)
 						}
 					}
-				}()
+				}(ctx)
 				t.sendMessage("Сессия начата. Отправьте 'stop' для отмены.", update, keyboard)
 
 			case update.Message.Text == "stop":
-				if t.taskUseCase.SelectActiveSession(strconv.Itoa(int(update.Message.Chat.ID))) {
-					if cancelFunc != nil {
-						(*cancelFunc)()
-					}
+				if clientUpdate, exists := activeSessions[update.Message.Chat.ID]; exists {
+					clientUpdate.cancelFunc()
+					delete(activeSessions, update.Message.Chat.ID)
 					t.taskUseCase.DeleteSession(strconv.Itoa(int(update.Message.Chat.ID)))
 					t.sendMessage("Сессия отменена.", update, keyboard)
 				} else {
